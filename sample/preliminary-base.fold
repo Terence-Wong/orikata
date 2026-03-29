@@ -1,0 +1,139 @@
+{
+  "file_spec": 1.1,
+  "file_creator": "Orikata test",
+  "file_title": "Preliminary base (square base)",
+  "file_classes": ["multiFrame"],
+  "frame_title": "Crease pattern",
+  "frame_description": "Square with diagonals and midlines",
+  "frame_class": "creasePattern",
+  "vertices_coords": [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [0.5, 0],
+    [1, 0.5],
+    [0.5, 1],
+    [0, 0.5],
+    [0.5, 0.5]
+  ],
+  "edges_vertices": [
+    [0, 4], [4, 1], [1, 5], [5, 2], [2, 6], [6, 3], [3, 7], [7, 0],
+    [0, 8], [1, 8], [2, 8], [3, 8],
+    [4, 8], [5, 8], [6, 8], [7, 8]
+  ],
+  "edges_assignment": [
+    "B", "B", "B", "B", "B", "B", "B", "B",
+    "M", "M", "M", "M",
+    "V", "V", "V", "V"
+  ],
+  "edges_foldAngle": [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0
+  ],
+  "faces_vertices": [
+    [0, 4, 8],
+    [4, 1, 8],
+    [1, 5, 8],
+    [5, 2, 8],
+    [2, 6, 8],
+    [6, 3, 8],
+    [3, 7, 8],
+    [7, 0, 8]
+  ],
+  "file_frames": [
+    {
+      "frame_title": "Book fold",
+      "frame_description": "Valley fold in half left to right along the vertical midline",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0.5, 0, 0],
+        [0, 0.5, 0],
+        [0.5, 1, 0],
+        [0, 0.5, 0],
+        [0.5, 0.5, 0]
+      ],
+      "edges_foldAngle": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0,
+        -180, 0, -180, 0
+      ]
+    },
+    {
+      "frame_title": "Fold in half again",
+      "frame_description": "Valley fold bottom edge up to the top",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0.5, 1, 0],
+        [0, 1, 0],
+        [0.5, 1, 0],
+        [0, 1, 0],
+        [0.5, 1, 0]
+      ],
+      "edges_foldAngle": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0,
+        -180, -180, -180, -180
+      ]
+    },
+    {
+      "frame_title": "Open squash — right flap",
+      "frame_description": "Lift the top right flap and squash it flat into a triangle",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0.25, 0.75, 0],
+        [0, 1, 0],
+        [0.25, 0.75, 0],
+        [0, 1, 0],
+        [0.25, 1, 0]
+      ],
+      "edges_foldAngle": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        180, 180, -180, -180,
+        -180, -180, -180, -180
+      ]
+    },
+    {
+      "frame_title": "Preliminary base complete",
+      "frame_description": "Flip and squash the left side to match — the preliminary base is a small square with four flaps",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0.5, 1, 0],
+        [0.5, 1, 0],
+        [0.5, 1, 0],
+        [0.5, 1, 0],
+        [0.5, 0.5, 0],
+        [0.5, 1, 0],
+        [0.5, 0.5, 0],
+        [0.5, 1, 0],
+        [0.5, 0.75, 0]
+      ],
+      "edges_foldAngle": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        180, 180, -180, -180,
+        -180, -180, -180, -180
+      ]
+    }
+  ]
+}

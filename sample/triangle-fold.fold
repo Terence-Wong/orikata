@@ -1,0 +1,43 @@
+{
+  "file_spec": 1.1,
+  "file_creator": "Orikata test",
+  "file_title": "Triangle fold",
+  "file_classes": ["multiFrame"],
+  "frame_title": "Flat square",
+  "frame_class": "creasePattern",
+  "vertices_coords": [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1]
+  ],
+  "edges_vertices": [
+    [0, 1], [1, 2], [2, 3], [3, 0],
+    [0, 2]
+  ],
+  "edges_assignment": [
+    "B", "B", "B", "B",
+    "V"
+  ],
+  "edges_foldAngle": [0, 0, 0, 0, 0],
+  "faces_vertices": [
+    [0, 1, 2],
+    [0, 2, 3]
+  ],
+  "file_frames": [
+    {
+      "frame_title": "Fold in half diagonally",
+      "frame_description": "Valley fold corner to corner along the diagonal",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0.5, 0.5, 0],
+        [0, 0, 0.0]
+      ],
+      "edges_foldAngle": [0, 0, 0, 0, -180]
+    }
+  ]
+}

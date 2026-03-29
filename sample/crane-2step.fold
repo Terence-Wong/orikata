@@ -1,0 +1,93 @@
+{
+  "file_spec": 1.1,
+  "file_creator": "Orikata test",
+  "file_title": "Simple fold demo",
+  "file_classes": ["multiFrame"],
+  "frame_title": "Flat square",
+  "frame_class": "creasePattern",
+  "vertices_coords": [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [0.5, 0],
+    [1, 0.5],
+    [0.5, 1],
+    [0, 0.5],
+    [0.5, 0.5]
+  ],
+  "edges_vertices": [
+    [0, 4], [4, 1], [1, 5], [5, 2], [2, 6], [6, 3], [3, 7], [7, 0],
+    [4, 8], [8, 6],
+    [7, 8], [8, 5],
+    [0, 8], [8, 2], [1, 8], [8, 3]
+  ],
+  "edges_assignment": [
+    "B", "B", "B", "B", "B", "B", "B", "B",
+    "V", "V",
+    "V", "V",
+    "F", "F", "F", "F"
+  ],
+  "edges_foldAngle": [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,
+    0, 0,
+    0, 0, 0, 0
+  ],
+  "faces_vertices": [
+    [0, 4, 8, 7],
+    [4, 1, 5, 8],
+    [8, 5, 2, 6],
+    [7, 8, 6, 3]
+  ],
+  "file_frames": [
+    {
+      "frame_title": "Valley fold center",
+      "frame_description": "Fold along the vertical center crease",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [0.5, 0, -0.5],
+        [0.5, 1, -0.5],
+        [0, 1, 0],
+        [0.5, 0, 0],
+        [0.5, 0.5, -0.5],
+        [0.5, 1, 0],
+        [0, 0.5, 0],
+        [0.5, 0.5, 0]
+      ],
+      "edges_foldAngle": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        -90, -90,
+        0, 0,
+        0, 0, 0, 0
+      ]
+    },
+    {
+      "frame_title": "Horizontal fold",
+      "frame_description": "Now fold along the horizontal crease",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [0.5, 0, -0.5],
+        [0.5, 0, -1.0],
+        [0, 0, -0.5],
+        [0.5, 0, 0],
+        [0.5, 0, -0.75],
+        [0.5, 0, -0.5],
+        [0, 0, -0.25],
+        [0.5, 0, -0.25]
+      ],
+      "edges_foldAngle": [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        -90, -90,
+        -90, -90,
+        0, 0, 0, 0
+      ]
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "file_spec": 1.1,
+  "file_creator": "Orikata test",
+  "file_title": "Waterbomb base",
+  "file_classes": ["multiFrame"],
+  "frame_title": "Crease pattern",
+  "frame_description": "Square with diagonal and midline creases pre-marked",
+  "frame_class": "creasePattern",
+  "vertices_coords": [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [0.5, 0.5]
+  ],
+  "edges_vertices": [
+    [0, 1], [1, 2], [2, 3], [3, 0],
+    [0, 4], [1, 4], [2, 4], [3, 4]
+  ],
+  "edges_assignment": [
+    "B", "B", "B", "B",
+    "V", "M", "V", "M"
+  ],
+  "edges_foldAngle": [0, 0, 0, 0, 0, 0, 0, 0],
+  "faces_vertices": [
+    [0, 1, 4],
+    [1, 2, 4],
+    [2, 3, 4],
+    [3, 0, 4]
+  ],
+  "file_frames": [
+    {
+      "frame_title": "Crease diagonals",
+      "frame_description": "Pre-crease both diagonals as valley folds, then unfold",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 1, 0],
+        [0, 1, 0],
+        [0.5, 0.5, 0.15]
+      ],
+      "edges_foldAngle": [0, 0, 0, 0, -20, 0, -20, 0]
+    },
+    {
+      "frame_title": "Mountain fold edges",
+      "frame_description": "Fold the midlines as mountain folds while the paper is still flat-ish",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [1, 0, 0],
+        [1, 1, 0],
+        [0, 1, 0],
+        [0.5, 0.5, -0.25]
+      ],
+      "edges_foldAngle": [0, 0, 0, 0, -30, 30, -30, 30]
+    },
+    {
+      "frame_title": "Collapse into waterbomb",
+      "frame_description": "Push the center down and bring all four corners together to collapse the base",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0.15, 0.5, 0],
+        [0.85, 0.5, 0],
+        [0.15, 0.5, 0],
+        [0.85, 0.5, 0],
+        [0.5, 0.5, -0.5]
+      ],
+      "edges_foldAngle": [0, 0, 0, 0, -180, 180, -180, 180]
+    },
+    {
+      "frame_title": "Waterbomb base complete",
+      "frame_description": "The finished waterbomb base — a flat triangle with four layers",
+      "frame_class": "foldedForm",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0.0, 0.5, 0],
+        [1.0, 0.5, 0],
+        [0.0, 0.5, 0],
+        [1.0, 0.5, 0],
+        [0.5, 0.5, 0]
+      ],
+      "edges_foldAngle": [0, 0, 0, 0, -180, 180, -180, 180]
+    }
+  ]
+}
