@@ -364,7 +364,7 @@ Test-visible state on the viewer root: `data-loaded`, `data-frame-index`, `data-
 | Q2  | Parent for the activity rule: `frame_parent` if present, else N−1.                                                                     |
 | Q3  | Strict topology equality for v1; error messages name the frame and the differing array.                                                |
 | Q4  | Empty newly-active set at frame 0.                                                                                                     |
-| Q5  | Drop `fold` npm if unused after step 3.                                                                                                |
+| Q5  | Drop `fold` npm if unused after step 3. Done: it was never needed.                                                                     |
 | Q6  | Hermetic e2e on every push; `e2e-live` on `main`.                                                                                      |
 | Q7  | Public-but-unguessable blob URLs accepted; documented in README.                                                                       |
 | Q8  | Keep uploads forever; no delete in v1.                                                                                                 |

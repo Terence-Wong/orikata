@@ -34,5 +34,7 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: !isCI,
     timeout: 120_000,
+    // The fixture routes the viewer tests use are off by default in a production build.
+    env: { ORIKATA_DEV_ROUTES: "1" },
   },
 });
