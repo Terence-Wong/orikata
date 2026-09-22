@@ -7,6 +7,7 @@ import {
 } from "@/animation/registry";
 import { InstantAnimator } from "@/animation/instant";
 import { LerpAnimator } from "@/animation/lerp";
+import { SolverAnimator } from "@/animation/solver/animator";
 
 describe("parseAnimatorName", () => {
   it("accepts every known name", () => {
@@ -29,6 +30,7 @@ describe("createAnimator", () => {
   it("builds the animator named", () => {
     expect(createAnimator("instant")).toBeInstanceOf(InstantAnimator);
     expect(createAnimator("lerp")).toBeInstanceOf(LerpAnimator);
+    expect(createAnimator("solver")).toBeInstanceOf(SolverAnimator);
   });
 
   it("returns a fresh instance each time", () => {

@@ -1,12 +1,13 @@
 import { InstantAnimator } from "./instant";
 import { LerpAnimator } from "./lerp";
+import { SolverAnimator } from "./solver/animator";
 import type { FoldAnimator } from "./types";
 
 /**
  * The animators the viewer can be asked for with `?animator=`. Both prototypes implement the same
  * interface so they can be compared on the same URL; `instant` skips animation entirely.
  */
-export const ANIMATOR_NAMES = ["instant", "lerp"] as const;
+export const ANIMATOR_NAMES = ["instant", "lerp", "solver"] as const;
 
 export type AnimatorName = (typeof ANIMATOR_NAMES)[number];
 
@@ -15,6 +16,7 @@ export const DEFAULT_ANIMATOR: AnimatorName = "lerp";
 const FACTORIES: Record<AnimatorName, () => FoldAnimator> = {
   instant: () => new InstantAnimator(),
   lerp: () => new LerpAnimator(),
+  solver: () => new SolverAnimator(),
 };
 
 export function createAnimator(name: AnimatorName): FoldAnimator {

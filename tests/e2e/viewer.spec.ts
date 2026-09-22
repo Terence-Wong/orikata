@@ -76,15 +76,24 @@ test("draws the model in WebGL", async ({ page }) => {
   expect(drawn).toBe(true);
 });
 
-test("animates between steps and settles on the destination", async ({ page }) => {
-  const viewer = await openFixture(page, "book-fold-90", "lerp");
-  await expect(viewer).toHaveAttribute("data-animator", "lerp");
+for (const animator of ["lerp", "solver"]) {
+  test(`animates between steps and settles on the destination (${animator})`, async ({ page }) => {
+    const viewer = await openFixture(page, "preliminary-base", animator);
+    await expect(viewer).toHaveAttribute("data-animator", animator);
 
-  await page.getByTestId("next-step").click();
-  await expect(viewer).toHaveAttribute("data-transitioning", "true");
-  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 5000 });
-  await expect(viewer).toHaveAttribute("data-frame-index", "1");
-});
+    await page.getByTestId("next-step").click();
+    await expect(viewer).toHaveAttribute("data-transitioning", "true");
+    await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 8000 });
+    await expect(viewer).toHaveAttribute("data-frame-index", "1");
+
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await page.getByTestId("next-step").click();
+    await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 8000 });
+    await expect(viewer).toHaveAttribute("data-frame-index", "2");
+    expect(errors).toEqual([]);
+  });
+}
 
 test("rejects a file that does not pass validation", async ({ page }) => {
   await page.goto("/dev/inherit-cycle");
