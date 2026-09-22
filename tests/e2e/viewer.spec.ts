@@ -95,6 +95,52 @@ for (const animator of ["lerp", "solver"]) {
   });
 }
 
+test("the crease pattern panel opens, closes and highlights the creases that move", async ({
+  page,
+}) => {
+  const viewer = await openFixture(page, "preliminary-base");
+  await expect(viewer).toHaveAttribute("data-crease-panel-open", "false");
+  await expect(page.getByTestId("crease-panel")).toHaveCount(0);
+
+  await page.getByTestId("crease-panel-toggle").click();
+  await expect(viewer).toHaveAttribute("data-crease-panel-open", "true");
+  const panel = page.getByTestId("crease-panel");
+  await expect(panel).toBeVisible();
+  // Frame 0 is the crease pattern itself: nothing has moved yet.
+  await expect(panel.locator('line[data-active="true"]')).toHaveCount(0);
+  await expect(page.getByTestId("crease-panel-note")).toHaveText("No creases move yet");
+
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-frame-index", "1");
+  await expect(panel.locator('line[data-active="true"]')).toHaveCount(8);
+  await expect(page.getByTestId("crease-panel-note")).toHaveText("8 creases move in this step");
+
+  await page.getByTestId("next-step").click();
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-frame-index", "3");
+  const activeIds = await panel
+    .locator('line[data-active="true"]')
+    .evaluateAll((lines) =>
+      lines.map((line) => Number(line.getAttribute("data-edge-id"))).sort((a, b) => a - b),
+    );
+  expect(activeIds).toEqual([8, 9, 10, 11]);
+
+  await page.getByTestId("crease-panel-toggle").click();
+  await expect(viewer).toHaveAttribute("data-crease-panel-open", "false");
+  await expect(page.getByTestId("crease-panel")).toHaveCount(0);
+});
+
+test("the crease pattern shows each step's assignments on the flat sheet", async ({ page }) => {
+  await openFixture(page, "book-fold");
+  await page.getByTestId("crease-panel-toggle").click();
+  const crease = page.getByTestId("crease-panel").locator('line[data-edge-id="6"]');
+  await expect(crease).toHaveAttribute("data-assignment", "U");
+
+  await page.getByTestId("next-step").click();
+  await expect(crease).toHaveAttribute("data-assignment", "V");
+  await expect(crease).toHaveAttribute("data-active", "true");
+});
+
 test("rejects a file that does not pass validation", async ({ page }) => {
   await page.goto("/dev/inherit-cycle");
   await expect(page.getByTestId("viewer")).toHaveCount(0);

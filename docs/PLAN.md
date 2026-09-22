@@ -358,25 +358,26 @@ Test-visible state on the viewer root: `data-loaded`, `data-frame-index`, `data-
 
 ## 11. Decision log (Terence, 2026-09-21)
 
-| Q   | Decision                                                                                                                               |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1  | Exclude `frame_*` metadata from inheritance.                                                                                           |
-| Q2  | Parent for the activity rule: `frame_parent` if present, else N−1.                                                                     |
-| Q3  | Strict topology equality for v1; error messages name the frame and the differing array.                                                |
-| Q4  | Empty newly-active set at frame 0.                                                                                                     |
-| Q5  | Drop `fold` npm if unused after step 3. Done: it was never needed.                                                                     |
-| Q6  | Hermetic e2e on every push; `e2e-live` on `main`.                                                                                      |
-| Q7  | Public-but-unguessable blob URLs accepted; documented in README.                                                                       |
-| Q8  | Keep uploads forever; no delete in v1.                                                                                                 |
-| Q9  | Terence runs `/bench` on his laptop from the preview deploy; no phone — throttled Chrome + device emulation, labelled as proxies.      |
-| Q10 | Continue steps 8–11 during the checkpoint; build nothing animator-specific.                                                            |
-| Q11 | Terence provisions GitHub, Vercel, Blob, Neon himself. Repo: github.com/Terence-Wong/orikata (old history kept at `archive/old-main`). |
-| Q12 | Add `book-fold-90`.                                                                                                                    |
-| Q13 | Compute fold angles from geometry; console-only warning when `edges_foldAngle` disagrees by > 1°.                                      |
-| Q14 | Frame 0 = "Crease pattern"; frames 1..N−1 = "Step i of N−1"; fallback title "Step {i}".                                                |
-| Q15 | Caps as proposed.                                                                                                                      |
-| —   | Migrations run in the Vercel build command; depends on Neon preview branching (README).                                                |
-| —   | Comparison report leads with Option B stability on preliminary-base 2→3; CPU-port perf labelled; Worker/GPU estimate included.         |
+| Q   | Decision                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Exclude `frame_*` metadata from inheritance.                                                                                                                                                    |
+| Q2  | Parent for the activity rule: `frame_parent` if present, else N−1.                                                                                                                              |
+| Q3  | Strict topology equality for v1; error messages name the frame and the differing array.                                                                                                         |
+| Q4  | Empty newly-active set at frame 0.                                                                                                                                                              |
+| Q5  | Drop `fold` npm if unused after step 3. Done: it was never needed.                                                                                                                              |
+| Q6  | Hermetic e2e on every push; `e2e-live` on `main`.                                                                                                                                               |
+| Q7  | Public-but-unguessable blob URLs accepted; documented in README.                                                                                                                                |
+| Q8  | Keep uploads forever; no delete in v1.                                                                                                                                                          |
+| Q9  | Terence runs `/bench` on his laptop from the preview deploy; no phone — throttled Chrome + device emulation, labelled as proxies.                                                               |
+| Q10 | Continue steps 8–11 during the checkpoint; build nothing animator-specific.                                                                                                                     |
+| Q11 | Terence provisions GitHub, Vercel, Blob, Neon himself. Repo: github.com/Terence-Wong/orikata (old history kept at `archive/old-main`).                                                          |
+| Q12 | Add `book-fold-90`.                                                                                                                                                                             |
+| Q13 | Compute fold angles from geometry; console-only warning when `edges_foldAngle` disagrees by > 1°.                                                                                               |
+| Q14 | Frame 0 = "Crease pattern"; frames 1..N−1 = "Step i of N−1"; fallback title "Step {i}".                                                                                                         |
+| —   | **Animation checkpoint decided 2026-09-22: Option B (solver) is the default. `lerp` stays registered, and may be surfaced as a user-facing toggle later. No automatic fallback was asked for.** |
+| Q15 | Caps as proposed.                                                                                                                                                                               |
+| —   | Migrations run in the Vercel build command; depends on Neon preview branching (README).                                                                                                         |
+| —   | Comparison report leads with Option B stability on preliminary-base 2→3; CPU-port perf labelled; Worker/GPU estimate included.                                                                  |
 
 ## 12. Environment variables (provisioned by Terence)
 

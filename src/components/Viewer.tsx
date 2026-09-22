@@ -6,6 +6,7 @@ import { loadFold, type FoldError, type ResolvedModel } from "@/fold";
 import { ViewerController, type ViewerState } from "@/viewer/controller";
 import { frameLabel } from "@/viewer/labels";
 import type { ViewerScene } from "@/viewer/scene";
+import { CreasePatternPanel } from "./CreasePatternPanel";
 import { StepControls } from "./StepControls";
 import { StepPanel } from "./StepPanel";
 
@@ -114,11 +115,21 @@ function LoadedViewer({
       data-crease-panel-open={state.creasePanelOpen ? "true" : "false"}
       data-animator={animator}
     >
-      <canvas
-        ref={canvasRef}
-        className="min-h-0 w-full flex-1 touch-none rounded-lg bg-neutral-100"
-        data-testid="viewer-canvas"
-      />
+      <div className="relative min-h-0 w-full flex-1">
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full touch-none rounded-lg bg-neutral-100"
+          data-testid="viewer-canvas"
+        />
+        <div className="absolute top-3 right-3">
+          <CreasePatternPanel
+            model={model}
+            frameIndex={state.frameIndex}
+            open={state.creasePanelOpen}
+            onToggle={() => controller?.toggleCreasePanel()}
+          />
+        </div>
+      </div>
       <div className="flex flex-wrap items-end justify-between gap-4 px-1 pt-4">
         <div className="min-w-0">
           {title && <p className="truncate text-sm text-neutral-500">{title}</p>}

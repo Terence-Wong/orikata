@@ -11,7 +11,12 @@ export const ANIMATOR_NAMES = ["instant", "lerp", "solver"] as const;
 
 export type AnimatorName = (typeof ANIMATOR_NAMES)[number];
 
-export const DEFAULT_ANIMATOR: AnimatorName = "lerp";
+/**
+ * The solver is the default from the prototype comparison (reports/animation-comparison.md):
+ * straight-line interpolation collapses an edge to nothing half way through any 180° fold.
+ * `lerp` stays registered as a comparison point and a possible user-facing toggle.
+ */
+export const DEFAULT_ANIMATOR: AnimatorName = "solver";
 
 const FACTORIES: Record<AnimatorName, () => FoldAnimator> = {
   instant: () => new InstantAnimator(),
