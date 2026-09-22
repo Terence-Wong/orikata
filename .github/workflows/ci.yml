@@ -49,9 +49,9 @@ jobs:
 
   e2e-live:
     name: Playwright (live services)
-    # Skipped until the Neon branch and Blob store for testing are provisioned and their secrets
-    # are set on the repository.
-    if: github.ref == 'refs/heads/main' && secrets.E2E_DATABASE_URL != ''
+    # Runs only once the Neon branch and Blob store for testing exist: set the repository variable
+    # E2E_LIVE to "true" alongside the E2E_* secrets to switch it on.
+    if: github.ref == 'refs/heads/main' && vars.E2E_LIVE == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
