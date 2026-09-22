@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { del, head } from "@vercel/blob";
 import { z } from "zod";
 import { loadFold } from "@/fold";
-import { blobToken } from "@/server/env";
+import { deleteBlob, headBlob, readBlobText } from "@/server/blob";
 import { LOAD_LIMITS, MAX_FILE_BYTES } from "@/server/limits";
 import { createModel } from "@/server/models";
 import { checkRateLimit } from "@/server/rateLimit";
@@ -34,27 +33,29 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const token = blobToken();
   const { blobUrl } = parsed.data;
 
   let blob;
   try {
-    blob = await head(blobUrl, { token });
+    blob = await headBlob(blobUrl);
   } catch {
     return error("That upload could not be found. Please try again.", 400);
   }
   if (blob.size > MAX_FILE_BYTES) {
-    await discard(blobUrl, token);
+    await discard(blobUrl);
     return error(`That file is larger than the ${MAX_FILE_BYTES / (1024 * 1024)} MB limit.`, 400);
   }
 
-  const response = await fetch(blobUrl);
-  if (!response.ok) return error("That upload could not be read. Please try again.", 400);
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await readBlobText(blobUrl);
+  } catch {
+    return error("That upload could not be read. Please try again.", 400);
+  }
 
   const loaded = loadFold(text, { limits: LOAD_LIMITS });
   if (!loaded.ok) {
-    await discard(blobUrl, token);
+    await discard(blobUrl);
     return Response.json(
       { error: loaded.errors[0]!.message, errors: loaded.errors },
       { status: 422 },
@@ -81,8 +82,8 @@ function titleFromFilename(filename: string | undefined): string | undefined {
 }
 
 /** Orphaned blobs are also swept by the cleanup cron; this keeps the common case tidy. */
-async function discard(url: string, token: string): Promise<void> {
-  await del(url, { token }).catch(() => undefined);
+async function discard(url: string): Promise<void> {
+  await deleteBlob(url).catch(() => undefined);
 }
 
 function error(message: string, status: number): Response {

@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     "/dev/[fixture]": ["./fixtures/valid/*.fold"],
     "/bench": ["./fixtures/valid/*.fold"],
   },
+  // PGlite is only loaded by the local backend, and only on the server.
+  serverExternalPackages: ["@electric-sql/pglite"],
 };
 
 export default nextConfig;

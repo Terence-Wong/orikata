@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const isCI = !!process.env.CI;
+// The e2e-live workflow points the same suite at a real Neon branch and Blob store.
+const live = process.env.ORIKATA_LIVE_BACKEND === "1";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -34,7 +36,14 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: !isCI,
     timeout: 120_000,
-    // The fixture routes the viewer tests use are off by default in a production build.
-    env: { ORIKATA_DEV_ROUTES: "1" },
+    env: {
+      // The fixture routes the viewer tests use are off by default in a production build.
+      ORIKATA_DEV_ROUTES: "1",
+      // Postgres in process and uploads on disk, so the suite needs no Vercel credentials.
+      ORIKATA_LOCAL_BACKEND: live ? "0" : "1",
+      ORIKATA_LOCAL_PGDATA: "memory",
+      RATE_LIMIT_SALT: process.env.RATE_LIMIT_SALT ?? "playwright",
+      CRON_SECRET: process.env.CRON_SECRET ?? "playwright",
+    },
   },
 });

@@ -1,7 +1,7 @@
-import { del, list } from "@vercel/blob";
 import { inArray, lt } from "drizzle-orm";
+import { deleteBlob, listBlobs } from "@/server/blob";
 import { db } from "@/server/db";
-import { blobToken, cronSecret } from "@/server/env";
+import { cronSecret } from "@/server/env";
 import { models, uploadAttempts } from "@/server/schema";
 import { ATTEMPT_RETENTION_MS } from "@/server/rateLimit";
 
@@ -28,36 +28,29 @@ export async function GET(request: Request): Promise<Response> {
     .delete(uploadAttempts)
     .where(lt(uploadAttempts.createdAt, new Date(now - ATTEMPT_RETENTION_MS)));
 
-  const token = blobToken();
-  let cursor: string | undefined;
+  const origin = new URL(request.url).origin;
+  const candidates = (await listBlobs(origin)).filter(
+    (blob) => now - blob.uploadedAt.getTime() > ORPHAN_GRACE_MS,
+  );
+
   let orphans = 0;
-  do {
-    const page = await list({ token, prefix: "models/", cursor, limit: 500 });
-    const candidates = page.blobs.filter(
-      (blob) => now - new Date(blob.uploadedAt).getTime() > ORPHAN_GRACE_MS,
-    );
-    if (candidates.length > 0) {
-      const known = await database
-        .select({ url: models.blobUrl })
-        .from(models)
-        .where(
-          inArray(
-            models.blobUrl,
-            candidates.map((blob) => blob.url),
-          ),
-        );
-      const keep = new Set(known.map((row) => row.url));
-      const unused = candidates.filter((blob) => !keep.has(blob.url));
-      if (unused.length > 0) {
-        await del(
-          unused.map((blob) => blob.url),
-          { token },
-        );
-        orphans += unused.length;
-      }
+  if (candidates.length > 0) {
+    const known = await database
+      .select({ url: models.blobUrl })
+      .from(models)
+      .where(
+        inArray(
+          models.blobUrl,
+          candidates.map((blob) => blob.url),
+        ),
+      );
+    const keep = new Set(known.map((row) => row.url));
+    const unused = candidates.filter((blob) => !keep.has(blob.url));
+    if (unused.length > 0) {
+      await deleteBlob(unused.map((blob) => blob.url));
+      orphans = unused.length;
     }
-    cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
+  }
 
   return Response.json({ orphansDeleted: orphans });
 }

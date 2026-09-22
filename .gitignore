@@ -43,3 +43,6 @@ next-env.d.ts
 # playwright
 /playwright-report
 /test-results
+
+# local backend (dev and hermetic e2e)
+/.orikata-local

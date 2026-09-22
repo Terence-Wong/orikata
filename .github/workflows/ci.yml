@@ -27,6 +27,7 @@ jobs:
 
   e2e:
     name: Playwright (hermetic)
+    # Postgres runs in process and uploads go to disk, so this job needs no secrets.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -43,5 +44,37 @@ jobs:
         if: failure()
         with:
           name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  e2e-live:
+    name: Playwright (live services)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm db:migrate
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.E2E_DATABASE_URL }}
+      - run: pnpm build
+      - run: pnpm test:e2e
+        env:
+          ORIKATA_LIVE_BACKEND: "1"
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.E2E_BLOB_READ_WRITE_TOKEN }}
+          RATE_LIMIT_SALT: ci-live
+          CRON_SECRET: ci-live
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report-live
           path: playwright-report/
           retention-days: 7
