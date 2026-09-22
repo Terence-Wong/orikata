@@ -24,7 +24,7 @@ The build is one pass with a hard stop after both animation prototypes run on th
 | React (UI only)                                          | Step panel, buttons, crease-pattern SVG, upload form.                                                                                         |
 | Three.js + `OrbitControls` (plain, no react-three-fiber) | The animator writes into a `Float32Array` every frame; an imperative render loop is simpler and faster than going through React's reconciler. |
 | Tailwind CSS                                             | Small UI, fast to style; no component library.                                                                                                |
-| `fold` npm (edemaine/fold, MIT)                          | Narrow use (`convert.toJSON`, filter helpers) behind `src/fold/topology.ts` with a hand-written `.d.ts`. **Dropped if unused after step 3.**  |
+| ~~`fold` npm~~                                           | Dropped after step 3 (decision Q5): the core needed nothing from it, so it was never added.                                                   |
 | Ported Origami Simulator solver (MIT)                    | Section 2. No physics-engine libraries; it is a constraint-based thin-shell deformation solver.                                               |
 | `earcut` via `THREE.ShapeUtils.triangulateShape`         | Triangulate polygonal faces for rendering and the solver; no extra dependency.                                                                |
 | `@vercel/blob`                                           | Client uploads with `handleUpload` token route; size/type enforced in the token.                                                              |
@@ -39,8 +39,8 @@ The build is one pass with a hard stop after both animation prototypes run on th
 
 ## 2. Origami Simulator integration
 
-**Licence (verified 2026-09-21):** MIT, "Copyright (c) 2018 Amanda Ghassaei". The `fold` package is
-also MIT (Demaine, Ku, Lang). Texts are in `THIRD_PARTY_LICENSES.md`.
+**Licence (verified 2026-09-21):** MIT, "Copyright (c) 2018 Amanda Ghassaei". Text in
+`THIRD_PARTY_LICENSES.md`.
 
 **Decision: port, not vendor or fork.**
 
