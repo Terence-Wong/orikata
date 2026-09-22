@@ -1,0 +1,64 @@
+{
+  "file_spec": 1.1,
+  "file_creator": "Orikata fixtures (hand-authored)",
+  "file_title": "Diagonal, then in half again",
+  "file_classes": ["singleModel"],
+  "frame_title": "Square with both diagonals",
+  "frame_classes": ["creasePattern"],
+  "frame_unit": "unit",
+  "vertices_coords": [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [0.5, 0.5]
+  ],
+  "edges_vertices": [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+    [0, 4],
+    [4, 2],
+    [1, 4],
+    [3, 4]
+  ],
+  "edges_assignment": ["B", "B", "B", "B", "U", "U", "U", "U"],
+  "faces_vertices": [
+    [0, 1, 4],
+    [1, 2, 4],
+    [2, 3, 4],
+    [3, 0, 4]
+  ],
+  "file_frames": [
+    {
+      "frame_title": "Fold along the diagonal",
+      "frame_classes": ["foldedForm"],
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [0, 1, 0],
+        [1, 1, 0],
+        [0, 1, 0],
+        [0.5, 0.5, 0]
+      ],
+      "edges_assignment": ["B", "B", "B", "B", "V", "V", "U", "U"]
+    },
+    {
+      "frame_title": "Fold in half again",
+      "frame_description": "Bring the bottom-left corner up to the top-right corner, folding both layers together.",
+      "frame_classes": ["foldedForm"],
+      "frame_parent": 1,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [1, 1, 0],
+        [0, 1, 0],
+        [1, 1, 0],
+        [0, 1, 0],
+        [0.5, 0.5, 0]
+      ],
+      "edges_assignment": ["B", "B", "B", "B", "V", "V", "M", "V"]
+    }
+  ]
+}
