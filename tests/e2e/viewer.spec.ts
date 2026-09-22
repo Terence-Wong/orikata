@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function openFixture(page: Page, fixture: string) {
-  await page.goto(`/dev/${fixture}`);
+async function openFixture(page: Page, fixture: string, animator = "instant") {
+  await page.goto(`/dev/${fixture}?animator=${animator}`);
   const viewer = page.getByTestId("viewer");
   await expect(viewer).toHaveAttribute("data-loaded", "true");
   return viewer;
@@ -74,6 +74,16 @@ test("draws the model in WebGL", async ({ page }) => {
     return canvas !== null && canvas.width > 0 && canvas.height > 0;
   });
   expect(drawn).toBe(true);
+});
+
+test("animates between steps and settles on the destination", async ({ page }) => {
+  const viewer = await openFixture(page, "book-fold-90", "lerp");
+  await expect(viewer).toHaveAttribute("data-animator", "lerp");
+
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-transitioning", "true");
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 5000 });
+  await expect(viewer).toHaveAttribute("data-frame-index", "1");
 });
 
 test("rejects a file that does not pass validation", async ({ page }) => {

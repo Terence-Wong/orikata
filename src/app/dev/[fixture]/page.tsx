@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { notFound } from "next/navigation";
+import { parseAnimatorName } from "@/animation/registry";
 import { Viewer } from "@/components/Viewer";
 
 /**
@@ -15,8 +16,15 @@ function devRoutesEnabled(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.ORIKATA_DEV_ROUTES === "1";
 }
 
-export default async function DevFixturePage({ params }: { params: Promise<{ fixture: string }> }) {
+export default async function DevFixturePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ fixture: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { fixture } = await params;
+  const animator = parseAnimatorName((await searchParams).animator);
   if (!devRoutesEnabled() || !(FIXTURES as readonly string[]).includes(fixture)) notFound();
 
   const foldText = await readFile(
@@ -27,7 +35,7 @@ export default async function DevFixturePage({ params }: { params: Promise<{ fix
   return (
     <main className="mx-auto flex h-screen max-w-4xl flex-col p-6">
       <p className="pb-3 text-xs tracking-wide text-neutral-400 uppercase">fixture · {fixture}</p>
-      <Viewer foldText={foldText} />
+      <Viewer foldText={foldText} animator={animator} />
     </main>
   );
 }

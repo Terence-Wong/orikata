@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { InstantAnimator } from "@/animation/instant";
+import { createAnimator, DEFAULT_ANIMATOR, type AnimatorName } from "@/animation/registry";
 import { loadFold, type FoldError, type ResolvedModel } from "@/fold";
 import { ViewerController, type ViewerState } from "@/viewer/controller";
 import { frameLabel } from "@/viewer/labels";
@@ -13,15 +13,27 @@ export interface ViewerProps {
   foldText: string;
   /** Shown above the step panel; the file's `file_title` when it has one. */
   title?: string;
+  /** Which animator drives the transitions; the two prototypes are compared this way. */
+  animator?: AnimatorName;
 }
 
-export function Viewer({ foldText, title }: ViewerProps) {
+export function Viewer({ foldText, title, animator = DEFAULT_ANIMATOR }: ViewerProps) {
   const loaded = useMemo(() => loadFold(foldText), [foldText]);
   if (!loaded.ok) return <ViewerError errors={loaded.errors} />;
-  return <LoadedViewer model={loaded.model} title={title ?? loaded.model.title} />;
+  return (
+    <LoadedViewer model={loaded.model} title={title ?? loaded.model.title} animator={animator} />
+  );
 }
 
-function LoadedViewer({ model, title }: { model: ResolvedModel; title: string | undefined }) {
+function LoadedViewer({
+  model,
+  title,
+  animator,
+}: {
+  model: ResolvedModel;
+  title: string | undefined;
+  animator: AnimatorName;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [controller, setController] = useState<ViewerController | null>(null);
   const [scene, setScene] = useState<ViewerScene | null>(null);
@@ -32,7 +44,7 @@ function LoadedViewer({ model, title }: { model: ResolvedModel; title: string | 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const created = new ViewerController(model, new InstantAnimator());
+    const created = new ViewerController(model, createAnimator(animator));
     setController(created);
 
     let sceneInstance: ViewerScene | undefined;
@@ -51,7 +63,7 @@ function LoadedViewer({ model, title }: { model: ResolvedModel; title: string | 
       setScene(null);
       setController(null);
     };
-  }, [model]);
+  }, [model, animator]);
 
   const idleState = useMemo<ViewerState>(
     () => ({
@@ -100,7 +112,7 @@ function LoadedViewer({ model, title }: { model: ResolvedModel; title: string | 
       data-transitioning={state.transitioning ? "true" : "false"}
       data-active-edges={state.activeEdges.join(",")}
       data-crease-panel-open={state.creasePanelOpen ? "true" : "false"}
-      data-animator="instant"
+      data-animator={animator}
     >
       <canvas
         ref={canvasRef}
