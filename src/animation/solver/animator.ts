@@ -18,6 +18,18 @@ export const SETTLE_TOLERANCE = (0.5 * Math.PI) / 180;
 
 type Phase = "idle" | "tweening" | "settling" | "landing";
 
+/** What the last transition cost, for the prototype comparison. */
+export interface TransitionDiagnostics {
+  /** How far the worst crease was from its target when the tween ended, in degrees. */
+  residualAtTweenEndDeg: number;
+  /** How far it still was when the solver stopped settling, in degrees. */
+  residualAtLandingDeg: number;
+  /** Rendered frames spent settling after the tween. */
+  settleFrames: number;
+  /** How far any vertex has to move during the landing blend, in model units. */
+  landingDistance: number;
+}
+
 /**
  * Prototype B: tween each crease's target fold angle from one frame to the next and let the
  * constraint solver track it, warm-started from the current state. The solved shape is re-seated
@@ -46,6 +58,7 @@ export class SolverAnimator implements FoldAnimator {
   /** Where the current transition started: the live state, not necessarily a stored frame. */
   private poseFrom: Float64Array = new Float64Array(0);
   private anglesFrom: Float64Array = new Float64Array(0);
+  private diagnostics: TransitionDiagnostics = emptyDiagnostics();
 
   init(model: ResolvedModel, out: Float32Array): void {
     this.positions = out;
@@ -84,6 +97,7 @@ export class SolverAnimator implements FoldAnimator {
     this.elapsed = 0;
     this.settled = 0;
     this.landed = 0;
+    this.diagnostics = emptyDiagnostics();
     this.phase = "tweening";
   }
 
@@ -105,21 +119,43 @@ export class SolverAnimator implements FoldAnimator {
       this.seatOnto(s);
       this.write(solver.positions);
       if (this.elapsed < TRANSITION_SECONDS) return "running";
+      this.diagnostics.residualAtTweenEndDeg = toDegrees(solver.maxAngleError());
       this.phase = "settling";
       return "running";
     }
 
     // Settling: the targets are final, so let the shape catch up before it is handed over.
     this.settled += dtSeconds;
+    this.diagnostics.settleFrames += 1;
     this.runSubsteps(dtSeconds);
     this.seatOnto(1);
     this.write(solver.positions);
-    if (solver.maxAngleError() > SETTLE_TOLERANCE && this.settled < SETTLE_SECONDS) {
-      return "landing";
-    }
+    const residual = solver.maxAngleError();
+    if (residual > SETTLE_TOLERANCE && this.settled < SETTLE_SECONDS) return "landing";
+
+    this.diagnostics.residualAtLandingDeg = toDegrees(residual);
     this.landingStart.set(solver.positions);
+    const target = this.frames[this.toFrame]!;
+    let distance = 0;
+    for (let i = 0; i < target.length; i += 3) {
+      distance = Math.max(
+        distance,
+        Math.hypot(
+          this.landingStart[i]! - target[i]!,
+          this.landingStart[i + 1]! - target[i + 1]!,
+          this.landingStart[i + 2]! - target[i + 2]!,
+        ),
+      );
+    }
+    // Report in model units rather than the solver's normalised space.
+    this.diagnostics.landingDistance = distance / (this.solverModel?.scale ?? 1);
     this.phase = "landing";
     return "landing";
+  }
+
+  /** What the last transition cost. Only meaningful once it has finished. */
+  lastTransition(): TransitionDiagnostics {
+    return this.diagnostics;
   }
 
   dispose(): void {
@@ -183,4 +219,17 @@ export class SolverAnimator implements FoldAnimator {
     if (!solverModel) return;
     denormalise(normalised, solverModel.scale, solverModel.offset, this.positions);
   }
+}
+
+function emptyDiagnostics(): TransitionDiagnostics {
+  return {
+    residualAtTweenEndDeg: 0,
+    residualAtLandingDeg: 0,
+    settleFrames: 0,
+    landingDistance: 0,
+  };
+}
+
+function toDegrees(radians: number): number {
+  return (radians * 180) / Math.PI;
 }

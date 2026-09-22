@@ -228,6 +228,33 @@ describe("SolverAnimator", () => {
     expect(maxDeviation(out, model, 1)).toBeLessThan(1e-5);
   });
 
+  it.each([
+    ["book-fold", 0, 1],
+    ["preliminary-base", 2, 3],
+  ])("reports what %s %i→%i cost the solver", (name, from, to) => {
+    const { animator } = setUp(name);
+    animator.jumpTo(from);
+    runTransition(animator, from, to);
+    const diagnostics = animator.lastTransition();
+    // The tween ends with the creases close to their targets, the settle closes the gap, and the
+    // handover then has almost nothing left to move.
+    expect(diagnostics.residualAtTweenEndDeg).toBeGreaterThan(0);
+    expect(diagnostics.residualAtTweenEndDeg).toBeLessThan(10);
+    expect(diagnostics.residualAtLandingDeg).toBeLessThanOrEqual(diagnostics.residualAtTweenEndDeg);
+    expect(diagnostics.settleFrames).toBeGreaterThan(0);
+    expect(diagnostics.landingDistance).toBeLessThan(0.05);
+  });
+
+  it("starts each transition's diagnostics afresh", () => {
+    const { animator } = setUp("book-fold-90");
+    animator.jumpTo(0);
+    runTransition(animator, 0, 1);
+    const first = animator.lastTransition().settleFrames;
+    animator.beginTransition(1, 2);
+    expect(animator.lastTransition().settleFrames).toBe(0);
+    expect(first).toBeGreaterThan(0);
+  });
+
   it("does nothing after dispose", () => {
     const { animator } = setUp("book-fold");
     animator.dispose();

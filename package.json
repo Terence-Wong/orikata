@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "compare": "vite-node -c vitest.config.mts scripts/compare-animators.ts"
   },
   "dependencies": {
     "next": "16.3.5",
@@ -37,6 +38,7 @@
     "prettier": "^3.9.8",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vite-node": "^6.0.0",
     "vitest": "^5.0.1"
   },
   "packageManager": "pnpm@10.18.3",
