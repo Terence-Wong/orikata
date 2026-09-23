@@ -26,9 +26,10 @@ are needed to work on the app. It is switched on by `ORIKATA_LOCAL_BACKEND=1`, w
 for you, and is never enabled in a deployment. Delete `.orikata-local/` to start from an empty
 database.
 
-Two routes exist only for development and are off in a production build unless `ORIKATA_DEV_ROUTES=1`
-is set: `/dev/:fixture` opens a committed fixture in the viewer, and `/bench` measures the animators'
-frame rate. Both accept `?animator=solver|lerp|instant`.
+`/examples/:name` opens one of the bundled models in the viewer, and the home page lists them; those
+are part of the product. `/bench`, which measures the animators' frame rate, exists only for
+development and is off in a production build unless `ORIKATA_DEV_ROUTES=1` is set. Any viewer URL
+accepts `?animator=solver|lerp|instant` to override the animator the model's size would choose.
 
 A Husky pre-commit hook runs lint-staged, `tsc --noEmit` and the Vitest suite. Playwright runs in CI
 (GitHub Actions) on every push against the local backend, and again on `main` against a real Neon

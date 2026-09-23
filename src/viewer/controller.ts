@@ -4,10 +4,10 @@ import type { Assignment, ResolvedModel } from "@/fold";
 export interface ViewerState {
   frameIndex: number;
   /**
-   * Where the model sits in the whole sequence, as a fraction: 1.5 is half way from step 1 to
-   * step 2. Whole numbers whenever a step has been reached.
+   * How far through the current step the model is, 0 to 1. 0 is the previous step's shape and 1 is
+   * this one's. Frame 0 has no step leading into it and always reads 1.
    */
-  position: number;
+  stepProgress: number;
   frameCount: number;
   transitioning: boolean;
   /** Edge ids highlighted for the frame being shown. */
@@ -36,7 +36,7 @@ export class ViewerController {
     this.positions = new Float32Array(model.vertexCount * 3);
     this.state = {
       frameIndex: 0,
-      position: 0,
+      stepProgress: 1,
       frameCount: model.frames.length,
       transitioning: false,
       activeEdges: [],
@@ -76,31 +76,25 @@ export class ViewerController {
     this.animator.beginTransition(frameIndex, index);
     this.setState({
       frameIndex: index,
-      position: index,
+      stepProgress: 1,
       transitioning: true,
       activeEdges: this.activeEdgesFor(frameIndex, index),
     });
   }
 
   /**
-   * Places the model anywhere in the sequence, with no animation: 1.5 is half way from step 1 to
-   * step 2. This is what the scrubber drives.
+   * Moves the model through the step it is on, 0 being the previous step's shape and 1 this one's.
+   * This is what the scrubber drives; the step itself does not change, so the panel stays put
+   * while a single fold is studied.
    */
-  scrubTo(position: number): void {
-    const { frameCount } = this.state;
-    const clamped = Math.min(Math.max(position, 0), frameCount - 1);
-    const from = Math.min(Math.floor(clamped), frameCount - 2);
-    const to = from + 1;
-    const progress = clamped - from;
-    this.animator.seek(from, to, progress);
+  scrubStep(progress: number): void {
+    const { frameIndex } = this.state;
+    // Frame 0 is the starting shape: there is no step leading into it to scrub.
+    if (frameIndex === 0) return;
+    const clamped = Math.min(Math.max(progress, 0), 1);
+    this.animator.seek(frameIndex - 1, frameIndex, clamped);
     this.positionsChanged = true;
-    this.setState({
-      frameIndex: Math.round(clamped),
-      position: clamped,
-      transitioning: false,
-      // The creases being worked on are the ones that move in the step being scrubbed through.
-      activeEdges: this.model.frames[to]!.newlyActive,
-    });
+    this.setState({ stepProgress: clamped, transitioning: false });
   }
 
   toggleCreasePanel(open?: boolean): void {

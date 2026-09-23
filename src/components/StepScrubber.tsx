@@ -1,43 +1,41 @@
 "use client";
 
 interface StepScrubberProps {
-  position: number;
-  frameCount: number;
+  /** How far through the current step, 0 to 1. */
+  progress: number;
+  frameIndex: number;
   disabled: boolean;
-  onScrub: (position: number) => void;
+  onScrub: (progress: number) => void;
 }
 
 /**
- * Drags the model through the whole sequence by hand: 1.5 is half way from step 1 to step 2. The
- * buttons animate between steps; this is for watching a fold closely, at your own pace.
+ * Moves the model through the current step by hand. The buttons animate from one step to the next;
+ * this is for taking a single fold slowly. Frame 0 has no step leading into it, so there is
+ * nothing to scrub there.
  */
-export function StepScrubber({ position, frameCount, disabled, onScrub }: StepScrubberProps) {
-  const last = frameCount - 1;
+export function StepScrubber({ progress, frameIndex, disabled, onScrub }: StepScrubberProps) {
+  const unavailable = frameIndex === 0;
   return (
-    <label className="flex items-center gap-3">
-      <span className="sr-only">Scrub through the fold</span>
+    <div className="flex items-center gap-3">
       <input
         type="range"
         min={0}
-        max={last}
-        step={0.01}
-        value={position}
-        disabled={disabled}
+        max={1}
+        step={0.005}
+        value={unavailable ? 1 : progress}
+        disabled={disabled || unavailable}
         onChange={(event) => onScrub(Number(event.target.value))}
-        aria-label="Scrub through the fold"
-        aria-valuetext={scrubLabel(position, last)}
+        aria-label={unavailable ? "Nothing to unfold yet" : `Move through step ${frameIndex}`}
+        aria-valuetext={`${Math.round(progress * 100)}% through this step`}
         data-testid="step-scrubber"
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-neutral-200 accent-neutral-800 disabled:opacity-40"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-neutral-200 accent-neutral-800 disabled:cursor-default disabled:opacity-40"
       />
-    </label>
+      <span
+        className="w-10 shrink-0 text-right text-xs tabular-nums text-neutral-500"
+        data-testid="step-scrubber-value"
+      >
+        {unavailable ? "—" : `${Math.round(progress * 100)}%`}
+      </span>
+    </div>
   );
-}
-
-function scrubLabel(position: number, last: number): string {
-  const step = Math.round(position);
-  if (Math.abs(position - step) < 0.005) {
-    return step === 0 ? "Crease pattern" : `Step ${step} of ${last}`;
-  }
-  const from = Math.floor(position);
-  return `Between ${from === 0 ? "the crease pattern" : `step ${from}`} and step ${from + 1}`;
 }

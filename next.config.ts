@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: import.meta.dirname,
   // The dev fixture route reads these at request time.
   outputFileTracingIncludes: {
-    "/dev/[fixture]": ["./fixtures/valid/*.fold"],
+    "/examples/[name]": ["./fixtures/valid/*.fold"],
     "/bench": ["./fixtures/valid/*.fold"],
   },
   // PGlite is only loaded by the local backend, and only on the server.

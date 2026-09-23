@@ -141,6 +141,56 @@ centre line on each face is a crease that has been folded and unfolded.
 
 Expected newly-active edges: frame 1 → {8..15}; frame 2 → {8..15}; frame 3 → {8, 9, 10, 11}.
 
+## Generated fixtures
+
+Three fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
+from the closed forms below (`pnpm fixtures`). The derivations are here and the same consistency
+tests apply, so a mistake in a formula fails the suite rather than slipping through — which is how
+the waterbomb's quadratic and the Miura's parameterisation were both caught while writing them.
+Their crease assignments are measured from the first folded frame rather than asserted, because
+guessing mountain from valley across a tessellation is exactly the sort of thing to get wrong.
+
+### `valid/accordion-pleat.fold` — 4 frames
+
+A strip of six equal panels, width 1/6, divided by creases across it that alternate valley and
+mountain. Folding keeps each panel's width, so the profile is a zigzag whose panels make an angle
+±a with the flat sheet, and the crease between two of them is folded by 2a. Frames are at 2a = 60°,
+120° and 180°; the last folds the pleat flat onto itself, so the panels stack.
+
+### `valid/waterbomb-base.fold` — 3 frames
+
+The preliminary base's crease pattern with mountain and valley exchanged: diagonals mountain,
+midlines valley, so the corners rise instead of falling. The same one-degree-of-freedom collapse
+applies, mirrored in z. With corners at radius r_c and height h_c and midpoints at r_m and h_m:
+
+- r_c² + h_c² = 2 and r_m² + h_m² = 1 (the creases from the centre keep their length)
+- (r_c/√2 − r_m)² + (r_c/√2)² + (h_c − h_m)² = 1 (corner to midpoint)
+
+Substituting the first two into the third gives r_c² + h_c² − 2·r_c·r_m/√2 − 2·h_c·h_m = 0, a
+quadratic in h_m. It has two roots: the larger collapses every midpoint onto the axis, which is
+rigid but degenerate, so the fold takes the smaller. When the corners meet on the axis (r_c = 0)
+the equations reduce to h_m = h_c/2.
+
+### `valid/miura-ori.fold` — 4 frames
+
+A tessellation of 48 identical parallelograms, 63 vertices, with a single degree of freedom: every
+crease in the sheet moves together. Flat, vertex (i, j) sits at (i·p + (j mod 2)·d, j·q) — straight
+rows, columns zigzagging by d, with p = 0.16, d = 0.07, q = 0.13.
+
+Folded, take
+
+    P(i, j) = (i·S + (j mod 2)·D, j·L, (i mod 2)·H)
+
+Every face is then a parallelogram, hence planar, and the edges give
+
+- S² + H² = p² — the row edges keep their length
+- D² + L² = d² + q² — the column edges keep theirs
+- S·D = p·d — the angle between them is unchanged, so faces stay congruent
+
+which leave one free parameter. S runs from p (flat) down to p·d/√(d² + q²), where L reaches zero
+and the sheet is folded flat; H, D and L follow from the three equations. The frames are at 35%,
+70% and 97% of that range.
+
 ## `invalid/` — one file per validation rule
 
 | file                           | rule                                              | expected code             |

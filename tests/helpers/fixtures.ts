@@ -8,6 +8,9 @@ export const VALID_FIXTURES = [
   "book-fold-90",
   "diagonal-twice",
   "preliminary-base",
+  "accordion-pleat",
+  "waterbomb-base",
+  "miura-ori",
 ] as const;
 export type ValidFixture = (typeof VALID_FIXTURES)[number];
 

@@ -275,20 +275,20 @@ drizzle/                         # migrations
 
 ## 7. Build order (TDD throughout; ★ = animation checkpoint)
 
-| #   | Step                                                                                                                                                 |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Scaffold: Next + TS strict + Tailwind, Vitest, Playwright, ESLint/Prettier, Husky, CI, licences, this document. CI green before any feature.         |
-| 2   | Hand-author fixtures + `fixtures/README.md`; fixture-consistency tests (red).                                                                        |
-| 3   | `src/fold`: parse → frames/inheritance/cycles → validation → topology → dihedral angles → newly-active edges. Drop `fold` npm if unused.             |
-| 4   | Viewer shell on `/dev/:fixture`: Three scene, front/back colours, M/V crease lines, orbit, auto-fit camera, step panel, prev/next (instant), labels. |
-| 5   | `FoldAnimator` interface + `LerpAnimator`.                                                                                                           |
-| 6   | Solver port (TDD on analytic cases) + `SolverAnimator` with landing blend.                                                                           |
-| 7   | **★ Comparison harness → `reports/animation-comparison.md` + screenshots + recommendation. STOP for Terence's decision.**                            |
-| 8   | Crease-pattern panel (SVG) with newly-active highlighting; toggle; test state. (May run during the checkpoint.)                                      |
-| 9   | Server: Drizzle schema + migrations, PGlite harness, slug generation, rate limiting, token route, create route, view route, cron.                    |
-| 10  | Upload page with client-side validation and Blob client upload; `/view/:slug` wired to the DB; share button.                                         |
-| 11  | Playwright e2e (5 scenarios) hermetic in CI + `e2e-live` on `main`; ask Terence for env vars/secrets at this point.                                  |
-| 12  | After the animator decision: set default, tune constants, final polish, mobile layout pass.                                                          |
+| #   | Step                                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Scaffold: Next + TS strict + Tailwind, Vitest, Playwright, ESLint/Prettier, Husky, CI, licences, this document. CI green before any feature.                                                                |
+| 2   | Hand-author fixtures + `fixtures/README.md`; fixture-consistency tests (red).                                                                                                                               |
+| 3   | `src/fold`: parse → frames/inheritance/cycles → validation → topology → dihedral angles → newly-active edges. Drop `fold` npm if unused.                                                                    |
+| 4   | Viewer shell on `/examples/:name` (originally `/dev/:fixture`, made public 2026-09-23): Three scene, front/back colours, M/V crease lines, orbit, auto-fit camera, step panel, prev/next (instant), labels. |
+| 5   | `FoldAnimator` interface + `LerpAnimator`.                                                                                                                                                                  |
+| 6   | Solver port (TDD on analytic cases) + `SolverAnimator` with landing blend.                                                                                                                                  |
+| 7   | **★ Comparison harness → `reports/animation-comparison.md` + screenshots + recommendation. STOP for Terence's decision.**                                                                                   |
+| 8   | Crease-pattern panel (SVG) with newly-active highlighting; toggle; test state. (May run during the checkpoint.)                                                                                             |
+| 9   | Server: Drizzle schema + migrations, PGlite harness, slug generation, rate limiting, token route, create route, view route, cron.                                                                           |
+| 10  | Upload page with client-side validation and Blob client upload; `/view/:slug` wired to the DB; share button.                                                                                                |
+| 11  | Playwright e2e (5 scenarios) hermetic in CI + `e2e-live` on `main`; ask Terence for env vars/secrets at this point.                                                                                         |
+| 12  | After the animator decision: set default, tune constants, final polish, mobile layout pass.                                                                                                                 |
 
 ## 8. Test plan
 

@@ -18,7 +18,8 @@
     "compare": "vite-node -c vitest.config.mts scripts/compare-animators.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "vercel-build": "pnpm db:migrate && next build"
+    "vercel-build": "pnpm db:migrate && next build",
+    "fixtures": "vite-node -c vitest.config.mts scripts/build-fixtures.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

@@ -55,7 +55,7 @@ describe("ViewerController", () => {
   it("starts at frame 0 with the animator initialised and jumped there", () => {
     expect(controller.getState()).toEqual({
       frameIndex: 0,
-      position: 0,
+      stepProgress: 1,
       frameCount: 3,
       transitioning: false,
       activeEdges: [],
@@ -164,67 +164,62 @@ describe("ViewerController", () => {
     expect(book.currentAssignments()[6]).toBe("V");
   });
 
-  it("scrubs to any point in the sequence without animating", () => {
+  it("scrubs within the step it is on, without changing which step that is", () => {
+    controller.goTo(2);
     animator.calls.length = 0;
-    controller.scrubTo(0.25);
-    expect(animator.calls).toEqual(["seek:0->1@0.25"]);
+    controller.scrubStep(0.25);
+    expect(animator.calls).toEqual(["seek:1->2@0.25"]);
     const state = controller.getState();
-    expect(state.position).toBe(0.25);
+    expect(state.stepProgress).toBe(0.25);
+    expect(state.frameIndex).toBe(2);
     expect(state.transitioning).toBe(false);
-    // Rounds to the nearer step for the panel, so the label flips at the half-way point.
-    expect(state.frameIndex).toBe(0);
-    controller.scrubTo(0.75);
-    expect(controller.getState().frameIndex).toBe(1);
+  });
+
+  it("has nothing to scrub at the crease pattern", () => {
+    animator.calls.length = 0;
+    controller.scrubStep(0.5);
+    expect(animator.calls).toEqual([]);
+    expect(controller.getState().stepProgress).toBe(1);
   });
 
   it("tells the scene to redraw after a scrub, once", () => {
-    controller.tick(1 / 60); // clear the initial draw
-    controller.scrubTo(0.5);
+    controller.next();
+    controller.tick(1 / 60);
+    controller.tick(1 / 60);
+    controller.scrubStep(0.5);
     expect(controller.tick(1 / 60)).toBe(true);
     expect(controller.tick(1 / 60)).toBe(false);
   });
 
-  it("scrubs within the right pair of frames", () => {
-    animator.calls.length = 0;
-    controller.scrubTo(1.5);
-    expect(animator.calls).toEqual(["seek:1->2@0.50"]);
+  it("clamps a progress outside the step", () => {
+    controller.next();
+    controller.scrubStep(-5);
+    expect(controller.getState().stepProgress).toBe(0);
+    controller.scrubStep(99);
+    expect(controller.getState().stepProgress).toBe(1);
   });
 
-  it("holds the last pair of frames at the very end of the sequence", () => {
-    animator.calls.length = 0;
-    controller.scrubTo(2);
-    expect(animator.calls).toEqual(["seek:1->2@1.00"]);
-    expect(controller.getState().position).toBe(2);
-  });
-
-  it("clamps a position outside the sequence", () => {
-    controller.scrubTo(-5);
-    expect(controller.getState().position).toBe(0);
-    controller.scrubTo(99);
-    expect(controller.getState().position).toBe(2);
-  });
-
-  it("highlights the creases of the step being scrubbed through", () => {
-    controller.scrubTo(0.3);
+  it("keeps the step's creases highlighted while scrubbing it", () => {
+    controller.next();
+    controller.scrubStep(0.3);
     expect(controller.getState().activeEdges).toEqual([6]);
   });
 
   it("stops an animation in progress when scrubbed", () => {
-    controller.next();
+    controller.goTo(2);
     expect(controller.getState().transitioning).toBe(true);
-    controller.scrubTo(0.5);
+    controller.scrubStep(0.5);
     expect(controller.getState().transitioning).toBe(false);
     expect(controller.tick(1 / 60)).toBe(true);
     expect(controller.tick(1 / 60)).toBe(false);
   });
 
-  it("keeps the slider in step with the buttons", () => {
+  it("puts the slider at the end of the step after moving to one", () => {
     controller.next();
-    expect(controller.getState().position).toBe(1);
+    expect(controller.getState().stepProgress).toBe(1);
+    controller.scrubStep(0.2);
     controller.next();
-    expect(controller.getState().position).toBe(2);
-    controller.prev();
-    expect(controller.getState().position).toBe(1);
+    expect(controller.getState().stepProgress).toBe(1);
   });
 
   it("disposes the animator", () => {

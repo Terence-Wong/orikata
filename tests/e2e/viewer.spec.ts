@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function openFixture(page: Page, fixture: string, animator = "instant") {
-  await page.goto(`/dev/${fixture}?animator=${animator}`);
+  await page.goto(animator ? `/examples/${fixture}?animator=${animator}` : `/examples/${fixture}`);
   const viewer = page.getByTestId("viewer");
   await expect(viewer).toHaveAttribute("data-loaded", "true");
   return viewer;
@@ -141,34 +141,43 @@ test("the crease pattern shows each step's assignments on the flat sheet", async
   await expect(crease).toHaveAttribute("data-active", "true");
 });
 
-test("the scrubber drags the model through the fold", async ({ page }) => {
+test("the scrubber moves through the step without changing which step it is", async ({ page }) => {
   const viewer = await openFixture(page, "preliminary-base", "solver");
   const scrubber = page.getByTestId("step-scrubber");
-  await expect(scrubber).toHaveValue("0");
-  await expect(viewer).toHaveAttribute("data-position", "0.00");
+  // The crease pattern has no step leading into it, so there is nothing to scrub.
+  await expect(scrubber).toBeDisabled();
+  await expect(page.getByTestId("step-scrubber-value")).toHaveText("—");
 
-  await scrubber.fill("1.5");
-  await expect(viewer).toHaveAttribute("data-position", "1.50");
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 10000 });
+  await expect(scrubber).toBeEnabled();
+  await expect(scrubber).toHaveValue("1");
+  await expect(page.getByTestId("step-scrubber-value")).toHaveText("100%");
+
+  await scrubber.fill("0.3");
+  await expect(viewer).toHaveAttribute("data-step-progress", "0.300");
+  await expect(page.getByTestId("step-scrubber-value")).toHaveText("30%");
+  // The step itself does not move, so the panel stays where it was.
+  await expect(viewer).toHaveAttribute("data-frame-index", "1");
+  await expect(page.getByTestId("step-progress")).toHaveText("Step 1 of 3");
   await expect(viewer).toHaveAttribute("data-transitioning", "false");
-  // Half way past the middle of a step, the panel shows the step being worked towards.
-  await expect(viewer).toHaveAttribute("data-frame-index", "2");
-  await expect(page.getByTestId("step-progress")).toHaveText("Step 2 of 3");
 
-  await scrubber.fill("0.2");
-  await expect(viewer).toHaveAttribute("data-position", "0.20");
-  await expect(viewer).toHaveAttribute("data-frame-index", "0");
-  await expect(page.getByTestId("step-title")).toHaveText("Precreased square");
+  await scrubber.fill("0");
+  await expect(viewer).toHaveAttribute("data-step-progress", "0.000");
+  await expect(viewer).toHaveAttribute("data-frame-index", "1");
 });
 
-test("the buttons and the scrubber stay in step with each other", async ({ page }) => {
+test("moving to another step puts the scrubber back at the end", async ({ page }) => {
   const viewer = await openFixture(page, "book-fold-90");
   await page.getByTestId("next-step").click();
-  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 8000 });
-  await expect(page.getByTestId("step-scrubber")).toHaveValue("1");
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 10000 });
+  await page.getByTestId("step-scrubber").fill("0.4");
+  await expect(viewer).toHaveAttribute("data-step-progress", "0.400");
 
-  await page.getByTestId("step-scrubber").fill("2");
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 10000 });
   await expect(viewer).toHaveAttribute("data-frame-index", "2");
-  await expect(page.getByTestId("next-step")).toBeDisabled();
+  await expect(page.getByTestId("step-scrubber")).toHaveValue("1");
 });
 
 test("the scrubber is out of reach while a step is animating", async ({ page }) => {
@@ -180,7 +189,29 @@ test("the scrubber is out of reach while a step is animating", async ({ page }) 
   await expect(page.getByTestId("step-scrubber")).toBeEnabled();
 });
 
-test("rejects a file that does not pass validation", async ({ page }) => {
-  await page.goto("/dev/inherit-cycle");
-  await expect(page.getByTestId("viewer")).toHaveCount(0);
+test("an example that does not exist is a 404", async ({ page }) => {
+  const response = await page.goto("/examples/inherit-cycle");
+  expect(response?.status()).toBe(404);
+});
+
+test("the home page lists the examples and they open", async ({ page }) => {
+  await page.goto("/");
+  const examples = page.getByTestId("examples").getByRole("link");
+  await expect(examples).toHaveCount(7);
+
+  await page.getByTestId("example-miura-ori").click();
+  await page.waitForURL(/\/examples\/miura-ori$/);
+  const viewer = page.getByTestId("viewer");
+  await expect(viewer).toHaveAttribute("data-loaded", "true");
+  await expect(viewer).toHaveAttribute("data-frame-count", "4");
+  await expect(page.getByTestId("step-title")).toHaveText("Miura tessellation");
+});
+
+test("the largest example folds without dropping to interpolation", async ({ page }) => {
+  // 63 vertices is well inside what the solver can keep up with.
+  const viewer = await openFixture(page, "miura-ori", "");
+  await expect(viewer).toHaveAttribute("data-animator", "solver");
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 10000 });
+  await expect(viewer).toHaveAttribute("data-frame-index", "1");
 });

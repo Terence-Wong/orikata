@@ -77,7 +77,7 @@ function LoadedViewer({
   const idleState = useMemo<ViewerState>(
     () => ({
       frameIndex: 0,
-      position: 0,
+      stepProgress: 1,
       frameCount: model.frames.length,
       transitioning: false,
       activeEdges: [],
@@ -121,7 +121,7 @@ function LoadedViewer({
       data-frame-count={state.frameCount}
       data-transitioning={state.transitioning ? "true" : "false"}
       data-active-edges={state.activeEdges.join(",")}
-      data-position={state.position.toFixed(2)}
+      data-step-progress={state.stepProgress.toFixed(3)}
       data-crease-panel-open={state.creasePanelOpen ? "true" : "false"}
       data-animator={animator}
     >
@@ -142,10 +142,10 @@ function LoadedViewer({
       </div>
       <div className="px-1 pt-4">
         <StepScrubber
-          position={state.position}
-          frameCount={state.frameCount}
+          progress={state.stepProgress}
+          frameIndex={state.frameIndex}
           disabled={!controller || state.transitioning}
-          onScrub={(position) => controller?.scrubTo(position)}
+          onScrub={(progress) => controller?.scrubStep(progress)}
         />
       </div>
       <div className="flex flex-wrap items-end justify-between gap-4 px-1 pt-3">
