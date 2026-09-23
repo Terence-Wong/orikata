@@ -1,0 +1,35 @@
+{
+  "file_spec": 1.1,
+  "file_title": "Frame 1 stretches and collapses edges, so it is not a fold of the same sheet",
+  "vertices_coords": [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1]
+  ],
+  "edges_vertices": [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 0],
+    [0, 2]
+  ],
+  "edges_assignment": ["B", "B", "B", "B", "V"],
+  "faces_vertices": [
+    [0, 1, 2],
+    [0, 2, 3]
+  ],
+  "file_frames": [
+    {
+      "frame_title": "Fold in half diagonally",
+      "frame_parent": 0,
+      "frame_inherit": true,
+      "vertices_coords": [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0.5, 0.5, 0],
+        [0, 0, 0]
+      ]
+    }
+  ]
+}

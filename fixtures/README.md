@@ -152,5 +152,6 @@ Expected newly-active edges: frame 1 → {8..15}; frame 2 → {8..15}; frame 3 �
 | `missing-faces-vertices.fold`  | frame 1 does not inherit, lacks `faces_vertices`  | `MISSING_FACES_VERTICES`  |
 | `vertex-count-changes.fold`    | frame 1 has 7 vertices, frame 0 has 6             | `VERTEX_COUNT_MISMATCH`   |
 | `topology-changes.fold`        | frame 1 lists the same edges in a different order | `TOPOLOGY_MISMATCH`       |
+| `edge-lengths-change.fold`     | frame 1 stretches and collapses edges             | `EDGE_LENGTH_MISMATCH`    |
 | `bad-frame-parent.fold`        | `frame_parent: 7`                                 | `BAD_FRAME_PARENT`        |
 | `inherit-cycle.fold`           | frames 1 and 2 inherit from each other            | `INHERIT_CYCLE`           |

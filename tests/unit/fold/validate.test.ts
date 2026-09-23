@@ -77,18 +77,22 @@ describe("validateFrames: shape of a single frame", () => {
     const [f0, f1] = valid(
       frames(square, {
         ...square,
+        // The square's right half stood up 90° about the crease: a real fold, so it also passes
+        // the edge-length check.
         vertices_coords: [
           [0, 0, 0],
           [0.5, 0, 0],
-          [0, 0, 0],
-          [0, 1, 0],
+          [0.5, 0, 0.5],
+          [0.5, 1, 0.5],
           [0.5, 1, 0],
-          [0, 1, 1],
+          [0, 1, 0],
         ],
       }),
     );
+    // Frame 0 is written in 2D and gains z = 0.
     expect(Array.from(f0!.coords.slice(0, 6))).toEqual([0, 0, 0, 0.5, 0, 0]);
-    expect(Array.from(f1!.coords.slice(15, 18))).toEqual([0, 1, 1]);
+    // Frame 1's third vertex keeps the height it was given.
+    expect(Array.from(f1!.coords.slice(6, 9))).toEqual([0.5, 0, 0.5]);
     expect(f1!.coords).toBeInstanceOf(Float64Array);
   });
 
@@ -254,6 +258,54 @@ describe("validateFrames: consistency with frame 0", () => {
     );
     expect(error.code).toBe("TOPOLOGY_MISMATCH");
     expect(error.message).toContain("edges_vertices");
+  });
+
+  it("rejects a frame whose edge lengths differ from frame 0, naming the edge", () => {
+    // Paper does not stretch: a later frame has to be the same sheet, folded.
+    const error = firstError(
+      frames(square, {
+        ...square,
+        vertices_coords: [
+          [0, 0, 0],
+          [0.5, 0, 0],
+          [0, 0, 0],
+          [0, 1, 0],
+          [0.5, 1, 0],
+          [0, 0, 0],
+        ],
+      }),
+    );
+    expect(error.code).toBe("EDGE_LENGTH_MISMATCH");
+    expect(error.frameIndex).toBe(1);
+    expect(error.message).toContain("Frame 1");
+    expect(error.message).toMatch(/edge \d+/);
+  });
+
+  it("allows the small edge-length drift a simulator's export carries", () => {
+    const drifted = (square.vertices_coords as number[][]).map((v) => [v[0]! * 1.005, v[1]!, 0]);
+    expect(validateFrames(frames(square, { ...square, vertices_coords: drifted })).ok).toBe(true);
+  });
+
+  it("rejects a stretch beyond the tolerance", () => {
+    const stretched = (square.vertices_coords as number[][]).map((v) => [v[0]! * 1.05, v[1]!, 0]);
+    const error = firstError(frames(square, { ...square, vertices_coords: stretched }));
+    expect(error.code).toBe("EDGE_LENGTH_MISMATCH");
+  });
+
+  it("ignores an edge that has no length in frame 0", () => {
+    const degenerate = {
+      ...square,
+      vertices_coords: [
+        [0, 0],
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0.5, 1],
+        [0, 1],
+      ],
+    };
+    // Edge 0 joins two coincident vertices, so there is no rest length to compare against.
+    expect(validateFrames(frames(degenerate, degenerate)).ok).toBe(true);
   });
 
   it("reports at most one error per frame and one for each bad frame", () => {

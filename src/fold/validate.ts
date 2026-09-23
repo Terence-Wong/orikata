@@ -7,6 +7,13 @@ import {
   type ValidatedFrame,
 } from "./types";
 
+/**
+ * How far an edge's length may drift from frame 0 before the file is rejected. Paper does not
+ * stretch, so a later frame has to be the same sheet folded; the allowance is for the small strain
+ * a simulator's exported geometry carries.
+ */
+export const MAX_EDGE_STRAIN = 0.02;
+
 /** Checks that apply to frames as written, before inheritance. */
 export function validateRawFrames(frames: RawFrame[]): FoldError[] {
   if (frames.length < 2) {
@@ -127,6 +134,14 @@ function compareWithFrame0(frame: ValidatedFrame, frame0: ValidatedFrame): FoldE
       message: `Frame ${frame.index} has ${count} vertices but frame 0 has ${count0}. All frames must share the same vertices.`,
     };
   }
+  const strain = worstEdgeStrain(frame, frame0);
+  if (strain && strain.value > MAX_EDGE_STRAIN) {
+    return {
+      code: "EDGE_LENGTH_MISMATCH",
+      frameIndex: frame.index,
+      message: `Frame ${frame.index}: edge ${strain.edge} is ${strain.length.toFixed(3)} long but ${strain.rest.toFixed(3)} in frame 0. Paper does not stretch, so every frame must be the same sheet folded.`,
+    };
+  }
   for (const key of ["edges_vertices", "faces_vertices"] as const) {
     const a = key === "edges_vertices" ? frame.edgesVertices : frame.facesVertices;
     const b = key === "edges_vertices" ? frame0.edgesVertices : frame0.facesVertices;
@@ -139,6 +154,31 @@ function compareWithFrame0(frame: ValidatedFrame, frame0: ValidatedFrame): FoldE
     }
   }
   return null;
+}
+
+/** The edge that has changed length the most between a frame and frame 0. */
+function worstEdgeStrain(
+  frame: ValidatedFrame,
+  frame0: ValidatedFrame,
+): { edge: number; value: number; length: number; rest: number } | null {
+  let worst: { edge: number; value: number; length: number; rest: number } | null = null;
+  frame0.edgesVertices.forEach(([a, b], edge) => {
+    const rest = edgeLength(frame0.coords, a, b);
+    // A zero-length edge in the flat sheet has no rest length to compare against.
+    if (rest === 0) return;
+    const length = edgeLength(frame.coords, a, b);
+    const value = Math.abs(length - rest) / rest;
+    if (!worst || value > worst.value) worst = { edge, value, length, rest };
+  });
+  return worst;
+}
+
+function edgeLength(coords: Float64Array, a: number, b: number): number {
+  return Math.hypot(
+    coords[3 * a]! - coords[3 * b]!,
+    coords[3 * a + 1]! - coords[3 * b + 1]!,
+    coords[3 * a + 2]! - coords[3 * b + 2]!,
+  );
 }
 
 function sameIndexArrays(a: readonly (readonly number[])[], b: readonly (readonly number[])[]) {

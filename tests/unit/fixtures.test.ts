@@ -219,6 +219,7 @@ describe("invalid fixtures", () => {
     ["missing-faces-vertices", "MISSING_FACES_VERTICES", 1],
     ["vertex-count-changes", "VERTEX_COUNT_MISMATCH", 1],
     ["topology-changes", "TOPOLOGY_MISMATCH", 1],
+    ["edge-lengths-change", "EDGE_LENGTH_MISMATCH", 1],
     ["bad-frame-parent", "BAD_FRAME_PARENT", 1],
     ["inherit-cycle", "INHERIT_CYCLE", 1],
   ];
