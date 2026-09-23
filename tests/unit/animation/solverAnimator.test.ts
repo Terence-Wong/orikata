@@ -255,6 +255,19 @@ describe("SolverAnimator", () => {
     expect(first).toBeGreaterThan(0);
   });
 
+  it("still lands exactly when the frame budget only allows one iteration", () => {
+    // Stands in for a model far too big for the full iteration rate: the shape will not have
+    // caught up with the targets, but the step must still finish where the author put it.
+    const model = load("preliminary-base");
+    const animator = new SolverAnimator(1e-9);
+    const out = new Float32Array(model.vertexCount * 3);
+    animator.init(model, out);
+    animator.jumpTo(0);
+    const states = runTransition(animator, 0, 1);
+    expect(states.at(-1)).toBe("idle");
+    expect(maxDeviation(out, model, 1)).toBeLessThan(1e-5);
+  });
+
   it("does nothing after dispose", () => {
     const { animator } = setUp("book-fold");
     animator.dispose();

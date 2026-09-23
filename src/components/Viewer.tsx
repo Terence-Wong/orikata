@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createAnimator, DEFAULT_ANIMATOR, type AnimatorName } from "@/animation/registry";
+import { chooseAnimator, createAnimator, type AnimatorName } from "@/animation/registry";
 import { loadFold, type FoldError, type ResolvedModel } from "@/fold";
 import { ViewerController, type ViewerState } from "@/viewer/controller";
 import { frameLabel } from "@/viewer/labels";
@@ -14,15 +14,22 @@ export interface ViewerProps {
   foldText: string;
   /** Shown above the step panel; the file's `file_title` when it has one. */
   title?: string;
-  /** Which animator drives the transitions; the two prototypes are compared this way. */
+  /**
+   * Forces a particular animator. Left out, the model's size decides: the solver below the vertex
+   * limit, straight-line interpolation above it.
+   */
   animator?: AnimatorName;
 }
 
-export function Viewer({ foldText, title, animator = DEFAULT_ANIMATOR }: ViewerProps) {
+export function Viewer({ foldText, title, animator }: ViewerProps) {
   const loaded = useMemo(() => loadFold(foldText), [foldText]);
   if (!loaded.ok) return <ViewerError errors={loaded.errors} />;
   return (
-    <LoadedViewer model={loaded.model} title={title ?? loaded.model.title} animator={animator} />
+    <LoadedViewer
+      model={loaded.model}
+      title={title ?? loaded.model.title}
+      animator={chooseAnimator(animator, loaded.model.vertexCount)}
+    />
   );
 }
 

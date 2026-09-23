@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShareLink } from "@/components/ShareLink";
 import { Viewer } from "@/components/Viewer";
+import { parseAnimatorName } from "@/animation/registry";
 import { findModelBySlug } from "@/server/models";
 
 export const runtime = "nodejs";
@@ -18,8 +19,16 @@ export async function generateMetadata({
   return { title: `${title} · Orikata`, robots: { index: false, follow: false } };
 }
 
-export default async function ViewPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ViewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { slug } = await params;
+  // Without ?animator=, the model's size decides which one runs.
+  const animator = parseAnimatorName((await searchParams).animator);
   const model = await findModelBySlug(slug);
   if (!model) notFound();
 
@@ -35,7 +44,7 @@ export default async function ViewPage({ params }: { params: Promise<{ slug: str
         </Link>
         <ShareLink slug={slug} />
       </div>
-      <Viewer foldText={foldText} title={model.title ?? undefined} />
+      <Viewer foldText={foldText} title={model.title ?? undefined} animator={animator} />
     </main>
   );
 }

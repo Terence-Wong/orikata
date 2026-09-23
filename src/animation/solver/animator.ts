@@ -1,14 +1,11 @@
 import type { ResolvedModel } from "@/fold";
 import { easeInOutCubic } from "../easing";
 import { TRANSITION_SECONDS, type FoldAnimator, type TransitionState } from "../types";
+import { planSubsteps, SOLVER_BUDGET_MS } from "./budget";
 import { applyRotation, applyTransform, kabsch } from "./kabsch";
 import { buildSolverModel, denormalise, frameTargets, normalise, type SolverModel } from "./model";
 import { Solver } from "./solver";
 
-/** Solver iterations per second of animation; a rendered frame gets its share of these. */
-export const SUBSTEPS_PER_SECOND = 1500;
-/** Never spend more than this many iterations on one rendered frame, however long it was. */
-export const MAX_SUBSTEPS_PER_FRAME = 120;
 /** Once the tween is over, keep solving for at most this long before landing. */
 export const SETTLE_SECONDS = 0.4;
 /** How long the solved shape is blended onto the author's stored geometry. */
@@ -39,6 +36,9 @@ export interface TransitionDiagnostics {
 export class SolverAnimator implements FoldAnimator {
   positions: Float32Array = new Float32Array(0);
 
+  /** `budgetMs` is how much of each rendered frame the solver may use. */
+  constructor(private readonly budgetMs: number = SOLVER_BUDGET_MS) {}
+
   private model: ResolvedModel | null = null;
   private solverModel: SolverModel | null = null;
   private solver: Solver | null = null;
@@ -46,6 +46,8 @@ export class SolverAnimator implements FoldAnimator {
   private frames: Float64Array[] = [];
   /** Each frame's target angles, one entry per hinge. */
   private frameAngles: Float64Array[] = [];
+  /** Rolling estimate of what one solver iteration costs, used to stay inside the frame budget. */
+  private msPerSubstep = 0;
 
   private phase: Phase = "idle";
   private fromFrame = 0;
@@ -187,13 +189,19 @@ export class SolverAnimator implements FoldAnimator {
     return "landing";
   }
 
+  /**
+   * Runs as many iterations as the frame can afford. A model too big for the full rate gets fewer,
+   * so it loses accuracy rather than frame rate; the landing blend still puts it exactly on the
+   * author's geometry at the end of the step.
+   */
   private runSubsteps(dtSeconds: number): void {
     const solver = this.solver!;
-    const count = Math.min(
-      MAX_SUBSTEPS_PER_FRAME,
-      Math.max(1, Math.round(dtSeconds * SUBSTEPS_PER_SECOND)),
-    );
+    const count = planSubsteps(dtSeconds, this.msPerSubstep, this.budgetMs);
+    const started = performance.now();
     for (let i = 0; i < count; i++) solver.substep();
+    const each = (performance.now() - started) / count;
+    // Smoothed, so one slow frame does not starve the next.
+    this.msPerSubstep = this.msPerSubstep === 0 ? each : this.msPerSubstep * 0.8 + each * 0.2;
   }
 
   /**

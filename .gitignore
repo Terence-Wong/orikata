@@ -46,3 +46,4 @@ next-env.d.ts
 
 # local backend (dev and hermetic e2e)
 /.orikata-local
+.env*.local

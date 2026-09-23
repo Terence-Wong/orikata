@@ -24,6 +24,7 @@ export default async function DevFixturePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { fixture } = await params;
+  // Undefined unless ?animator= asked for one, in which case the model size decides.
   const animator = parseAnimatorName((await searchParams).animator);
   if (!devRoutesEnabled() || !(FIXTURES as readonly string[]).includes(fixture)) notFound();
 
