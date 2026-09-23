@@ -24,6 +24,10 @@ export class InstantAnimator implements FoldAnimator {
     this.jumpTo(to);
   }
 
+  seek(from: number, to: number, progress: number): void {
+    this.jumpTo(progress >= 1 ? to : from);
+  }
+
   step(): TransitionState {
     return "idle";
   }

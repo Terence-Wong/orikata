@@ -19,12 +19,23 @@ import {
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Assignment, ResolvedModel } from "@/fold";
 import type { ViewerController } from "./controller";
-import { buildRenderModel, CREASE_COLORS, fitCamera } from "./renderModel";
+import {
+  buildRenderModel,
+  CREASE_COLORS,
+  fitCamera,
+  writeTrianglePositions,
+  type RenderModel,
+} from "./renderModel";
 
 const FOV_DEGREES = 45;
 const PAPER_FRONT = 0xf7f3ea;
 const PAPER_BACK = 0xe0b36a;
 const CREASE_WIDTH = 2;
+/**
+ * How far apart successive layers of paper are held, as a fraction of the model's size. Enough to
+ * settle the depth buffer where the sheet folds flat onto itself, far too little to see.
+ */
+const PAPER_THICKNESS = 0.0006;
 
 /**
  * Owns the Three.js scene and the render loop. Reads vertex positions from the controller every
@@ -36,6 +47,9 @@ export class ViewerScene {
   private readonly camera: PerspectiveCamera;
   private readonly controls: OrbitControls;
   private readonly meshGeometry = new BufferGeometry();
+  private readonly render: RenderModel;
+  private readonly meshPositions: Float32Array;
+  private readonly thickness: number;
   private readonly lineGeometry = new BufferGeometry();
   private readonly linePositions: Float32Array;
   private readonly lineColors: Float32Array;
@@ -52,6 +66,7 @@ export class ViewerScene {
     private readonly controller: ViewerController,
   ) {
     const render = buildRenderModel(model);
+    this.render = render;
     this.lineIndices = render.lines;
 
     this.renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -66,10 +81,14 @@ export class ViewerScene {
     fill.position.set(-1.2, 1.1, -1.6);
     this.scene.add(fill);
 
-    const position = new BufferAttribute(controller.positions, 3);
-    position.setUsage(DynamicDrawUsage);
-    this.meshGeometry.setAttribute("position", position);
-    this.meshGeometry.setIndex(new BufferAttribute(render.triangles, 1));
+    // The mesh keeps its own vertices so each face can sit on its own layer; see
+    // writeTrianglePositions for why.
+    this.thickness = fitCamera(model, FOV_DEGREES, 1).radius * PAPER_THICKNESS;
+    this.meshPositions = new Float32Array(render.triangleSource.length * 3);
+    this.meshGeometry.setAttribute(
+      "position",
+      new BufferAttribute(this.meshPositions, 3).setUsage(DynamicDrawUsage),
+    );
 
     // The two sides of the paper are drawn as two meshes over one geometry, so the model reads as
     // folded rather than as a flat shape. Flat shading keeps each facet crisp without normals.
@@ -134,6 +153,7 @@ export class ViewerScene {
     this.resize();
 
     this.updateCreaseColors();
+    this.copyMeshPositions();
     this.copyLinePositions();
     this.frameHandle = requestAnimationFrame(this.loop);
   }
@@ -177,7 +197,7 @@ export class ViewerScene {
     this.lastTime = time;
 
     if (this.controller.tick(dt)) {
-      this.meshGeometry.getAttribute("position").needsUpdate = true;
+      this.copyMeshPositions();
       this.copyLinePositions();
       this.needsRender = true;
     }
@@ -186,6 +206,17 @@ export class ViewerScene {
     this.needsRender = false;
     this.renderer.render(this.scene, this.camera);
   };
+
+  private copyMeshPositions(): void {
+    writeTrianglePositions(
+      this.controller.positions,
+      this.render,
+      this.thickness,
+      this.meshPositions,
+    );
+    this.meshGeometry.getAttribute("position").needsUpdate = true;
+    this.meshGeometry.computeBoundingSphere();
+  }
 
   /** Creases share the model's vertices but need their own copy, one pair per edge. */
   private copyLinePositions(): void {

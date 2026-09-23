@@ -8,6 +8,7 @@ import { frameLabel } from "@/viewer/labels";
 import type { ViewerScene } from "@/viewer/scene";
 import { CreasePatternPanel } from "./CreasePatternPanel";
 import { StepControls } from "./StepControls";
+import { StepScrubber } from "./StepScrubber";
 import { StepPanel } from "./StepPanel";
 
 export interface ViewerProps {
@@ -76,6 +77,7 @@ function LoadedViewer({
   const idleState = useMemo<ViewerState>(
     () => ({
       frameIndex: 0,
+      position: 0,
       frameCount: model.frames.length,
       transitioning: false,
       activeEdges: [],
@@ -119,6 +121,7 @@ function LoadedViewer({
       data-frame-count={state.frameCount}
       data-transitioning={state.transitioning ? "true" : "false"}
       data-active-edges={state.activeEdges.join(",")}
+      data-position={state.position.toFixed(2)}
       data-crease-panel-open={state.creasePanelOpen ? "true" : "false"}
       data-animator={animator}
     >
@@ -137,7 +140,15 @@ function LoadedViewer({
           />
         </div>
       </div>
-      <div className="flex flex-wrap items-end justify-between gap-4 px-1 pt-4">
+      <div className="px-1 pt-4">
+        <StepScrubber
+          position={state.position}
+          frameCount={state.frameCount}
+          disabled={!controller || state.transitioning}
+          onScrub={(position) => controller?.scrubTo(position)}
+        />
+      </div>
+      <div className="flex flex-wrap items-end justify-between gap-4 px-1 pt-3">
         <div className="min-w-0">
           {title && <p className="truncate text-sm text-neutral-500">{title}</p>}
           <StepPanel label={label} />

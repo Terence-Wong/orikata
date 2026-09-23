@@ -38,6 +38,19 @@ export class LerpAnimator implements FoldAnimator {
     this.positions.set(start);
   }
 
+  seek(from: number, to: number, progress: number): void {
+    const start = this.frames[from];
+    const end = this.frames[to];
+    if (!start || !end) return;
+    this.from = null;
+    this.to = null;
+    const s = Math.min(Math.max(progress, 0), 1);
+    for (let i = 0; i < this.positions.length; i++) {
+      const a = start[i]!;
+      this.positions[i] = a + s * (end[i]! - a);
+    }
+  }
+
   step(dtSeconds: number): TransitionState {
     const { from, to } = this;
     if (!from || !to) return "idle";

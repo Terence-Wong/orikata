@@ -10,6 +10,14 @@ import { Solver } from "./solver";
 export const SETTLE_SECONDS = 0.4;
 /** How long the solved shape is blended onto the author's stored geometry. */
 export const LANDING_SECONDS = 0.15;
+/**
+ * Most iterations spent on one move of the scrubber. The solver is a relaxation, so where it ends
+ * up depends on where it came from; running it to convergence means the scrubber shows the same
+ * model at the same position whether it was dragged there or jumped there.
+ */
+export const SCRUB_MAX_SUBSTEPS = 400;
+/** How often convergence is checked while scrubbing. */
+const SCRUB_CHECK_EVERY = 25;
 /** Good enough to stop settling early, in radians (0.5°). */
 export const SETTLE_TOLERANCE = (0.5 * Math.PI) / 180;
 
@@ -101,6 +109,54 @@ export class SolverAnimator implements FoldAnimator {
     this.landed = 0;
     this.diagnostics = emptyDiagnostics();
     this.phase = "tweening";
+  }
+
+  /**
+   * Places the model part-way between two frames for the scrubber. The solver is a relaxation, not
+   * a recording, so it tracks whatever targets it is given and this works in either direction.
+   */
+  seek(from: number, to: number, progress: number): void {
+    const solver = this.solver;
+    const start = this.frames[from];
+    const end = this.frames[to];
+    if (!solver || !start || !end) return;
+
+    const s = Math.min(Math.max(progress, 0), 1);
+    const anglesFrom = this.frameAngles[from]!;
+    const anglesTo = this.frameAngles[to]!;
+    for (let h = 0; h < solver.targets.length; h++) {
+      solver.targets[h] = anglesFrom[h]! + s * (anglesTo[h]! - anglesFrom[h]!);
+    }
+
+    // Land exactly on a stored frame at either end, so scrubbing to a step matches stepping to it.
+    if (s === 0 || s === 1) {
+      solver.setPositions(s === 0 ? start : end);
+      this.phase = "idle";
+      this.write(solver.positions);
+      return;
+    }
+
+    // Always relax from the starting frame, so where the scrubber lands depends only on where it
+    // is, not on how it got there. Dragging and jumping then agree.
+    solver.setPositions(start);
+    for (let h = 0; h < solver.targets.length; h++) {
+      solver.targets[h] = anglesFrom[h]! + s * (anglesTo[h]! - anglesFrom[h]!);
+    }
+    this.poseFrom = start;
+    this.toFrame = to;
+    for (let i = 1; i <= SCRUB_MAX_SUBSTEPS; i++) {
+      solver.substep();
+      if (i % SCRUB_CHECK_EVERY === 0 && solver.maxAngleError() < SETTLE_TOLERANCE) break;
+    }
+    for (let i = 0; i < this.reference.length; i++) {
+      const a = start[i]!;
+      this.reference[i] = a + s * (end[i]! - a);
+    }
+    const transform = kabsch(solver.positions, this.reference);
+    applyTransform(transform, solver.positions);
+    applyRotation(transform.rotation, solver.velocities);
+    this.phase = "idle";
+    this.write(solver.positions);
   }
 
   step(dtSeconds: number): TransitionState {

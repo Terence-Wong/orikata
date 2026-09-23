@@ -141,6 +141,45 @@ test("the crease pattern shows each step's assignments on the flat sheet", async
   await expect(crease).toHaveAttribute("data-active", "true");
 });
 
+test("the scrubber drags the model through the fold", async ({ page }) => {
+  const viewer = await openFixture(page, "preliminary-base", "solver");
+  const scrubber = page.getByTestId("step-scrubber");
+  await expect(scrubber).toHaveValue("0");
+  await expect(viewer).toHaveAttribute("data-position", "0.00");
+
+  await scrubber.fill("1.5");
+  await expect(viewer).toHaveAttribute("data-position", "1.50");
+  await expect(viewer).toHaveAttribute("data-transitioning", "false");
+  // Half way past the middle of a step, the panel shows the step being worked towards.
+  await expect(viewer).toHaveAttribute("data-frame-index", "2");
+  await expect(page.getByTestId("step-progress")).toHaveText("Step 2 of 3");
+
+  await scrubber.fill("0.2");
+  await expect(viewer).toHaveAttribute("data-position", "0.20");
+  await expect(viewer).toHaveAttribute("data-frame-index", "0");
+  await expect(page.getByTestId("step-title")).toHaveText("Precreased square");
+});
+
+test("the buttons and the scrubber stay in step with each other", async ({ page }) => {
+  const viewer = await openFixture(page, "book-fold-90");
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 8000 });
+  await expect(page.getByTestId("step-scrubber")).toHaveValue("1");
+
+  await page.getByTestId("step-scrubber").fill("2");
+  await expect(viewer).toHaveAttribute("data-frame-index", "2");
+  await expect(page.getByTestId("next-step")).toBeDisabled();
+});
+
+test("the scrubber is out of reach while a step is animating", async ({ page }) => {
+  const viewer = await openFixture(page, "preliminary-base", "solver");
+  await page.getByTestId("next-step").click();
+  await expect(viewer).toHaveAttribute("data-transitioning", "true");
+  await expect(page.getByTestId("step-scrubber")).toBeDisabled();
+  await expect(viewer).toHaveAttribute("data-transitioning", "false", { timeout: 8000 });
+  await expect(page.getByTestId("step-scrubber")).toBeEnabled();
+});
+
 test("rejects a file that does not pass validation", async ({ page }) => {
   await page.goto("/dev/inherit-cycle");
   await expect(page.getByTestId("viewer")).toHaveCount(0);

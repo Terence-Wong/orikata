@@ -13,6 +13,11 @@ export interface FoldAnimator {
   /** Places the model on a frame with no animation. */
   jumpTo(frame: number): void;
   beginTransition(from: number, to: number): void;
+  /**
+   * Places the model part-way between two frames, with no animation. `progress` runs 0 to 1. This
+   * is what the scrubber uses, so it has to work in both directions and be safe to call repeatedly.
+   */
+  seek(from: number, to: number, progress: number): void;
   /** Advances by `dtSeconds`, writing into the positions buffer. */
   step(dtSeconds: number): TransitionState;
   readonly positions: Float32Array;
