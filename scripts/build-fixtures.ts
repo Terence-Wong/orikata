@@ -1,14 +1,29 @@
 /**
- * Writes the fixtures whose coordinates come from a closed form rather than a short table: an
- * accordion pleat, a waterbomb base and a Miura-ori. The formulas are derived in
- * `fixtures/README.md`, and `tests/unit/fixtures.test.ts` checks the result is a rigid fold of one
- * sheet, so a mistake in a formula fails the suite rather than slipping through.
+ * Writes the fixtures too long to type out. The accordion pleat, waterbomb base and Miura-ori come
+ * from closed forms; the paper airplane and crane are written as folding sequences (see
+ * `folding-sequence.ts`). The working is in `fixtures/README.md`, and
+ * `tests/unit/fixtures.test.ts` checks every result is a rigid fold of one sheet, so a mistake
+ * fails the suite rather than slipping through.
  *
  * Run with `pnpm fixtures`.
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadFold, type Assignment } from "@/fold";
+import {
+  apply,
+  compose,
+  FoldingSequence,
+  foldAcross,
+  invertMotion,
+  motionFromTriangle,
+  turnAbout,
+  type FaceInfo,
+  type Layers,
+  type Motion,
+  type Vec2,
+  type Vec3,
+} from "./folding-sequence";
 
 type Vertex = [number, number, number];
 
@@ -337,10 +352,612 @@ function miuraOri(): Fixture {
   };
 }
 
-const FIXTURES: [string, Fixture][] = [
-  ["accordion-pleat", accordionPleat()],
-  ["waterbomb-base", waterbombBase()],
-  ["miura-ori", miuraOri()],
+/**
+ * The classic dart, from a sheet in the proportions of A4. Every step is a plain fold of the layers
+ * on one side of a line, so mountain and valley come straight from the direction each layer turns.
+ */
+function paperAirplane(): Fixture {
+  const h = Math.SQRT2;
+  const all: Layers = () => true;
+  const tan22 = Math.SQRT2 - 1;
+  // The wing crease runs parallel to the keel, this far from it once the plane is folded in half.
+  const keel = 0.13;
+
+  const sequence = new FoldingSequence([
+    [-0.5, 0],
+    [0.5, 0],
+    [0.5, h],
+    [-0.5, h],
+  ])
+    .step({
+      title: "Crease down the middle",
+      description: "Fold the sheet in half lengthways, behind.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [0, 0],
+            [0, 1],
+          ],
+          side: [0.25, 0.5],
+          groups: [{ layers: all, angle: -180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Unfold",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [0, 0],
+            [0, 1],
+          ],
+          side: [-0.25, 0.5],
+          groups: [{ layers: ({ cp }) => cp[0] > 0, angle: -180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the top corners to the centre",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [0, h],
+            [-0.5, h - 0.5],
+          ],
+          side: [-0.45, h - 0.02],
+          groups: [{ layers: all, angle: 180 }],
+        },
+        {
+          kind: "fold",
+          line: [
+            [0, h],
+            [0.5, h - 0.5],
+          ],
+          side: [0.45, h - 0.02],
+          groups: [{ layers: all, angle: 180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the slanted edges to the centre",
+      description: "The nose narrows to a point.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [0, h],
+            [-0.5, h - 0.5 / tan22],
+          ],
+          side: [-0.49, 1],
+          groups: [{ layers: all, angle: 180 }],
+        },
+        {
+          kind: "fold",
+          line: [
+            [0, h],
+            [0.5, h - 0.5 / tan22],
+          ],
+          side: [0.49, 1],
+          groups: [{ layers: all, angle: 180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold in half",
+      description: "Fold the left half behind, so the flaps end up outside.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [0, 0],
+            [0, 1],
+          ],
+          side: [-0.2, 0.5],
+          groups: [{ layers: all, angle: -180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the wings down",
+      description: "One wing to the front, the other behind, along a line parallel to the keel.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [keel, 0],
+            [keel, 1],
+          ],
+          side: [0.4, 0.5],
+          groups: [
+            { layers: ({ cp }) => cp[0] > 0, angle: 180, tag: "front wing" },
+            { layers: ({ cp }) => cp[0] < 0, angle: -180, tag: "back wing" },
+          ],
+        },
+      ],
+    })
+    .step({
+      title: "Open the wings",
+      description: "Lift both wings level, square to the body.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [keel, 0],
+            [keel, 1],
+          ],
+          side: [keel - 0.1, 0.5],
+          groups: [
+            { layers: ({ tags }) => tags.has("front wing"), angle: 90 },
+            { layers: ({ tags }) => tags.has("back wing"), angle: -90 },
+          ],
+        },
+      ],
+    });
+
+  return {
+    title: "Paper airplane",
+    patternTitle: "A4 sheet",
+    patternDescription: "The creases of the classic dart.",
+    ...sequence.build(),
+  };
+}
+
+function unitVector([x, y, z]: Vec3): Vec3 {
+  const length = Math.hypot(x, y, z);
+  return [x / length, y / length, z / length];
+}
+
+/**
+ * The angle, in `turnAbout`'s convention for this line and side, that turns `from` to `to`. Both
+ * points must be the same distance from the line.
+ */
+function signedTurn(line: readonly [Vec2, Vec2], side: Vec2, from: Vec3, to: Vec3): number {
+  // `turnAbout` by a right angle shows which way positive goes; measure against that.
+  const quarter = apply(turnAbout(line, side, 90), from);
+  const [a] = line;
+  const foot = (p: Vec3): Vec3 => {
+    const axis = unitVector([line[1][0] - a[0], line[1][1] - a[1], 0]);
+    const t = (p[0] - a[0]) * axis[0] + (p[1] - a[1]) * axis[1];
+    return [a[0] + t * axis[0], a[1] + t * axis[1], 0];
+  };
+  const base = foot(from);
+  const u: Vec3 = [from[0] - base[0], from[1] - base[1], from[2] - base[2]];
+  const v: Vec3 = [quarter[0] - base[0], quarter[1] - base[1], quarter[2] - base[2]];
+  const w: Vec3 = [to[0] - base[0], to[1] - base[1], to[2] - base[2]];
+  const along = u[0] * w[0] + u[1] * w[1] + u[2] * w[2];
+  const across = v[0] * w[0] + v[1] * w[1] + v[2] * w[2];
+  return (Math.atan2(across, along) * 180) / Math.PI;
+}
+
+/**
+ * The traditional crane, from a square of half-width 1 centred on the origin, as in
+ * `preliminary-base`. It collapses the same way (frames 1–3 use that fixture's closed form, stood
+ * upright), then kite folds, petal folds front and back, reverse folds the neck, tail and head, and
+ * spreads the wings. Model coordinates below are the flat, upright preliminary base: centre of the
+ * sheet at the top (0, 0), the corners together at the bottom (0, −√2).
+ */
+function crane(): Fixture {
+  const r2 = Math.SQRT2;
+  const bottom: Vec2 = [0, -r2];
+  // The kite creases meet the sides of the base at K; the petal fold's hinge runs through both.
+  const k = r2 - 1;
+  const kRight: Vec2 = [k, -k];
+  const kLeft: Vec2 = [-k, -k];
+  const hingeY = -k;
+  const hinge = [kLeft, kRight] as const;
+  const hingeCentre: Vec2 = [0, hingeY];
+
+  // Layers by where they came from in the crease pattern: quadrants, and the wedges around each
+  // edge midpoint (the four "arms" of the preliminary base, two layers each).
+  const q1 = ({ cp }: FaceInfo) => cp[0] > 0 && cp[1] > 0;
+  const q2 = ({ cp }: FaceInfo) => cp[0] < 0 && cp[1] > 0;
+  const q3 = ({ cp }: FaceInfo) => cp[0] < 0 && cp[1] < 0;
+  const q4 = ({ cp }: FaceInfo) => cp[0] > 0 && cp[1] < 0;
+  const right = ({ cp }: FaceInfo) => cp[0] > Math.abs(cp[1]);
+  const top = ({ cp }: FaceInfo) => cp[1] > Math.abs(cp[0]);
+  const left = ({ cp }: FaceInfo) => -cp[0] > Math.abs(cp[1]);
+  const under = ({ cp }: FaceInfo) => -cp[1] > Math.abs(cp[0]);
+  const tagged =
+    (name: string) =>
+    ({ tags }: FaceInfo) =>
+      tags.has(name);
+  const belowHinge = ({ world }: FaceInfo) => world[1] < hingeY - 1e-6;
+  const and =
+    (...all: Layers[]): Layers =>
+    (face) =>
+      all.every((layers) => layers(face));
+  const not =
+    (layers: Layers): Layers =>
+    (face) =>
+      !layers(face);
+
+  // The collapse. Vertex j of the base sits at azimuth j·45° in the crease pattern: even j are edge
+  // midpoints at radius 1, odd j corners at radius √2. `place` gives each vertex's position in
+  // preliminary-base's coordinates (z up); `upright` turns that so the flat base lies in z = 0.
+  const upright = ([x, y, z]: Vec3): Vec3 => [x, z, -y];
+  const collapse = (place: (j: number) => Vec3) => (face: FaceInfo) => {
+    const sector = Math.floor(
+      (((Math.atan2(face.cp[1], face.cp[0]) * 180) / Math.PI + 360) % 360) / 45,
+    );
+    const flat = (j: number): Vec2 => {
+      const radius = j % 2 === 0 ? 1 : r2;
+      const azimuth = (j * Math.PI) / 4;
+      return [radius * Math.cos(azimuth), radius * Math.sin(azimuth)];
+    };
+    const j0 = sector;
+    const j1 = (sector + 1) % 8;
+    return motionFromTriangle(
+      [[0, 0], flat(j0), flat(j1)],
+      [[0, 0, 0], upright(place(j0)), upright(place(j1))],
+    );
+  };
+  const onAzimuth = (j: number, radius: number, height: number): Vec3 => {
+    const azimuth = (j * Math.PI) / 4;
+    return [radius * Math.cos(azimuth), radius * Math.sin(azimuth), height];
+  };
+  const partial = (j: number) =>
+    j % 2 === 0 ? onAzimuth(j, (2 * r2) / 3, -1 / 3) : onAzimuth(j, 1, -1);
+  const cornersMeet = (j: number) =>
+    j % 2 === 0 ? onAzimuth(j, r2 / 2, -r2 / 2) : ([0, 0, -r2] as Vec3);
+  const flattened = (j: number): Vec3 =>
+    j % 2 === 1 ? [0, 0, -r2] : j === 0 || j === 2 ? [r2 / 2, 0, -r2 / 2] : [-r2 / 2, 0, -r2 / 2];
+
+  // Kite folds: the lower edges of the front flaps to the centre line.
+  const kite = (line: readonly [Vec2, Vec2], side: Vec2, layers: Layers, tag: string) => ({
+    kind: "fold" as const,
+    line,
+    side,
+    groups: [{ layers, angle: 180, tag }],
+  });
+  const rightPoint: Vec2 = [r2 / 2, -r2 / 2];
+  const leftPoint: Vec2 = [-r2 / 2, -r2 / 2];
+
+  /**
+   * The petal fold, lifted `degrees` of the way. Around each K point four hinges close a loop:
+   * the base (which does not move), the petal turning up about the hinge line, the kite flap on
+   * the petal, and the layer behind the flap, hinged to the base. That loop is a spherical four-bar
+   * linkage, so it moves rigidly with one degree of freedom: given the petal's turn, the flap and
+   * the layer behind it must meet where two circles on a sphere cross. The circles cross twice;
+   * the fold is the crossing reached continuously from flat, so the linkage is followed a degree
+   * at a time. (Flat at the end, the circles only touch, so there the known flat result is used.)
+   * `front` false mirrors everything for the back of the model.
+   */
+  const petalLift = (degrees: number, front: boolean) => {
+    // Every stage of the lift is measured from the flat base before it.
+    const from = front ? "front unfolded" : "front petal";
+    const toward = front ? 1 : -1;
+    const petal = turnAbout(hinge, bottom, toward * degrees);
+    const middle = front ? q4 : q2;
+    // The petal itself, by where it is in the crease pattern rather than where it has turned to:
+    // past the side of the central diamond, the line through the two K points.
+    const diamond = 2 - r2;
+    const petalPart = front
+      ? ({ cp }: FaceInfo) => cp[0] - cp[1] > diamond
+      : ({ cp }: FaceInfo) => cp[1] - cp[0] > diamond;
+    const kiteRight = front ? "kite front right" : "kite back right";
+    const kiteLeft = front ? "kite front left" : "kite back left";
+    const place = (
+      right: { flap: Motion; behind: Motion },
+      left: { flap: Motion; behind: Motion },
+    ) => ({
+      kind: "place" as const,
+      groups: [
+        {
+          layers: and(middle, petalPart, not(tagged(kiteRight)), not(tagged(kiteLeft))),
+          then: petal,
+          from,
+        },
+        { layers: and(middle, tagged(kiteRight)), then: right.flap, from },
+        { layers: and(middle, tagged(kiteLeft)), then: left.flap, from },
+        { layers: and(q1, tagged(kiteRight)), then: right.behind, from },
+        { layers: and(q3, tagged(kiteLeft)), then: left.behind, from },
+      ],
+    });
+    // Flat, the answer is exact: the flap is folded along its kite crease under the petal, and the
+    // layer behind lies folded along the same line.
+    if (degrees === 180) {
+      const folded = (kPoint: Vec2) => ({
+        flap: compose(petal, foldAcross(bottom, kPoint)),
+        behind: foldAcross(bottom, kPoint),
+      });
+      return place(folded(kRight), folded(kLeft));
+    }
+    const side = (kPoint: Vec2, edgePoint: Vec2) => {
+      // Before the lift, flap and layer behind lie on each other, hinged along the kite line
+      // from the bottom point to K, and meet at the edge midpoint.
+      const line = [bottom, kPoint] as const;
+      const corner: Vec3 = [edgePoint[0], edgePoint[1], 0];
+      const axis = unitVector([kPoint[0] - bottom[0], kPoint[1] - bottom[1], 0]);
+      const behind = (angle: number) => apply(turnAbout(line, edgePoint, angle), corner);
+      // Where the layer behind puts the shared corner, taken back through the petal's turn, must
+      // lie on the circle the flap can swing it round: the plane through `corner` square to the
+      // kite line.
+      const gapAt = (petalDegrees: number, angle: number) => {
+        const p = apply(
+          invertMotion(turnAbout(hinge, bottom, toward * petalDegrees)),
+          behind(angle),
+        );
+        return (p[0] - corner[0]) * axis[0] + (p[1] - corner[1]) * axis[1];
+      };
+      // Follow the linkage from flat, a degree at a time, keeping to the crossing nearest the
+      // last: the two circles cross twice, and only continuity says which crossing is the fold.
+      let angle = 0;
+      for (let turned = 1; turned <= degrees; turned++) {
+        const gap = (a: number) => gapAt(turned, a);
+        let found: number | undefined;
+        for (let reach = 0.25; reach <= 60 && found === undefined; reach += 0.25) {
+          for (const [lo, hi] of [
+            [angle, angle + reach],
+            [angle - reach, angle],
+          ] as const) {
+            if (Math.sign(gap(lo)) === Math.sign(gap(hi)) || gap(lo) === 0) continue;
+            let [a, b] = [lo, hi];
+            for (let i = 0; i < 80; i++) {
+              const mid = (a + b) / 2;
+              if (Math.sign(gap(mid)) === Math.sign(gap(a))) a = mid;
+              else b = mid;
+            }
+            found = (a + b) / 2;
+            break;
+          }
+        }
+        if (found === undefined) throw new Error(`petal fold: linkage lost at ${turned}°`);
+        angle = found;
+      }
+      const meet = behind(angle);
+      // The flap's own turn about the kite line takes its corner to where the petal's inverse puts
+      // the meeting point.
+      const target = apply(invertMotion(petal), meet);
+      const flapAngle = signedTurn(line, edgePoint, corner, target);
+      return {
+        behind: turnAbout(line, edgePoint, angle),
+        flap: compose(petal, turnAbout(line, edgePoint, flapAngle)),
+      };
+    };
+    return place(side(kRight, rightPoint), side(kLeft, leftPoint));
+  };
+
+  /** The precreases the back's petal fold needs: its kite lines, and the hinge. */
+  const backPrecreases = [
+    {
+      kind: "crease" as const,
+      line: [bottom, kRight] as const,
+      layers: top,
+      tag: { side: rightPoint, name: "kite back right" },
+    },
+    {
+      kind: "crease" as const,
+      line: [bottom, kLeft] as const,
+      layers: left,
+      tag: { side: leftPoint, name: "kite back left" },
+    },
+    {
+      kind: "crease" as const,
+      line: hinge,
+      layers: and(
+        (f: FaceInfo) => top(f) || left(f),
+        not(tagged("kite back right")),
+        not(tagged("kite back left")),
+      ),
+    },
+  ];
+
+  // Inside reverse folds: the front layers of a flap turn behind and the back layers forward, so
+  // the flap's spine flips from valley to mountain and the tip goes up between them.
+  const reverse = (
+    line: readonly [Vec2, Vec2],
+    side: Vec2,
+    front: Layers,
+    back: Layers,
+    tag: string,
+  ) => ({
+    kind: "fold" as const,
+    line,
+    side,
+    groups: [
+      { layers: front, angle: -180, tag },
+      { layers: back, angle: 180, tag },
+    ],
+  });
+
+  const neckLine = [
+    hingeCentre,
+    [Math.cos(Math.PI / 12), hingeY - Math.sin(Math.PI / 12)],
+  ] as const;
+  const tailLine = [
+    hingeCentre,
+    [-Math.cos(Math.PI / 12), hingeY - Math.sin(Math.PI / 12)],
+  ] as const;
+  const tip = apply(foldAcross(...neckLine), [bottom[0], bottom[1], 0]);
+  const spine: Vec2 = [tip[0] - hingeCentre[0], tip[1] - hingeCentre[1]];
+  const spineLength = Math.hypot(...spine);
+  const s: Vec2 = [spine[0] / spineLength, spine[1] / spineLength];
+  // The head turns a quarter-turn down from the neck, so the crease bisects the two directions.
+  const headAt: Vec2 = [hingeCentre[0] + 0.78 * spine[0], hingeCentre[1] + 0.78 * spine[1]];
+  const headLine = [headAt, [headAt[0] + s[0] + s[1], headAt[1] + s[1] - s[0]]] as const;
+
+  const frontOfRightLeg = and(q1, right, belowHinge);
+  const backOfRightLeg = and(q1, top, belowHinge);
+  const frontOfLeftLeg = and(q3, under, belowHinge);
+  const backOfLeftLeg = and(q3, left, belowHinge);
+  const wingLine = [
+    [-1, 0],
+    [1, 0],
+  ] as const;
+
+  const sequence = new FoldingSequence([
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ])
+    .step({
+      title: "Collapse the precreased square",
+      description: "Diagonals are valleys, midlines mountains; the corners start to drop.",
+      operations: [
+        {
+          kind: "crease",
+          line: [
+            [-1, -1],
+            [1, 1],
+          ],
+          layers: () => true,
+        },
+        {
+          kind: "crease",
+          line: [
+            [-1, 1],
+            [1, -1],
+          ],
+          layers: () => true,
+        },
+        {
+          kind: "crease",
+          line: [
+            [-1, 0],
+            [1, 0],
+          ],
+          layers: () => true,
+        },
+        {
+          kind: "crease",
+          line: [
+            [0, -1],
+            [0, 1],
+          ],
+          layers: () => true,
+        },
+        { kind: "place", groups: [{ layers: () => true, set: collapse(partial) }] },
+      ],
+    })
+    .step({
+      title: "Bring the corners together",
+      operations: [{ kind: "place", groups: [{ layers: () => true, set: collapse(cornersMeet) }] }],
+    })
+    .step({
+      title: "Flatten into a preliminary base",
+      description: "Two flaps to each side.",
+      operations: [{ kind: "place", groups: [{ layers: () => true, set: collapse(flattened) }] }],
+    })
+    .step({
+      title: "Fold the edges to the centre",
+      description: "Top layer only: a kite shape.",
+      operations: [
+        kite([bottom, kRight], rightPoint, right, "kite front right"),
+        kite([bottom, kLeft], leftPoint, under, "kite front left"),
+      ],
+    })
+    .step({
+      name: "front unfolded",
+      title: "Unfold the kite",
+      description:
+        "Crease across the top of the kite as well. On paper that is a fold down and back, which bends the layers at the spine; here it is only the crease it leaves.",
+      operations: [
+        {
+          kind: "fold",
+          line: [bottom, kRight],
+          side: [0.1, -0.8],
+          groups: [{ layers: tagged("kite front right"), angle: 180 }],
+        },
+        {
+          kind: "fold",
+          line: [bottom, kLeft],
+          side: [-0.1, -0.8],
+          groups: [{ layers: tagged("kite front left"), angle: 180 }],
+        },
+        { kind: "crease", line: hinge, layers: (f) => right(f) || under(f) },
+      ],
+    })
+    .step({
+      title: "Petal fold: lift the bottom corner",
+      description:
+        "Lift the top layer's bottom corner up along the horizontal crease. The sides swing in along the kite creases.",
+      operations: [petalLift(90, true)],
+    })
+    .step({
+      name: "front petal",
+      title: "Petal fold: flatten",
+      description: "Press the sides in flat under the petal.",
+      operations: [petalLift(180, true)],
+    })
+    .step({
+      title: "Petal fold the back: lift",
+      description: "Turn over and repeat: crease the kite and its top, then lift.",
+      operations: [...backPrecreases, petalLift(90, false)],
+    })
+    .step({
+      title: "Petal fold the back: flatten",
+      description: "This is the bird base.",
+      operations: [petalLift(180, false)],
+    })
+    .step({
+      title: "Reverse fold the neck",
+      description: "Push the right-hand lower flap up inside, between the layers.",
+      operations: [reverse(neckLine, bottom, frontOfRightLeg, backOfRightLeg, "neck")],
+    })
+    .step({
+      title: "Reverse fold the tail",
+      operations: [reverse(tailLine, bottom, frontOfLeftLeg, backOfLeftLeg, "tail")],
+    })
+    .step({
+      title: "Reverse fold the head",
+      operations: [
+        reverse(
+          headLine,
+          [tip[0], tip[1]],
+          and(tagged("neck"), right),
+          and(tagged("neck"), top),
+          "head",
+        ),
+      ],
+    })
+    .step({
+      title: "Fold the wings down",
+      description: "Front wing forwards, back wing behind.",
+      operations: [
+        {
+          kind: "fold",
+          line: wingLine,
+          side: [0, 0.3],
+          groups: [
+            { layers: q4, angle: 180, tag: "front wing" },
+            { layers: q2, angle: -180, tag: "back wing" },
+          ],
+        },
+      ],
+    })
+    .step({
+      title: "Spread the wings",
+      operations: [
+        {
+          kind: "fold",
+          line: wingLine,
+          side: [0, -0.3],
+          groups: [
+            { layers: tagged("front wing"), angle: 90 },
+            { layers: tagged("back wing"), angle: -90 },
+          ],
+        },
+      ],
+    });
+
+  return {
+    title: "Crane",
+    patternTitle: "Crease pattern",
+    patternDescription: "The traditional orizuru, from a square.",
+    ...sequence.build(),
+  };
+}
+
+const FIXTURES: [string, () => Fixture][] = [
+  ["accordion-pleat", () => withMeasuredAssignments(accordionPleat())],
+  ["waterbomb-base", () => withMeasuredAssignments(waterbombBase())],
+  ["miura-ori", () => withMeasuredAssignments(miuraOri())],
+  ["paper-airplane", paperAirplane],
+  ["crane", crane],
 ];
 
 /**
@@ -362,8 +979,10 @@ function withMeasuredAssignments(fixture: Fixture): Fixture {
   return { ...fixture, assignments };
 }
 
-for (const [name, source] of FIXTURES) {
-  const fixture = withMeasuredAssignments(source);
+const only = process.argv.slice(2);
+for (const [name, make] of FIXTURES) {
+  if (only.length > 0 && !only.includes(name)) continue;
+  const fixture = make();
   const path = join(process.cwd(), "fixtures", "valid", `${name}.fold`);
   writeFileSync(path, toFold(fixture));
   process.stdout.write(

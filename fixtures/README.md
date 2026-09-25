@@ -143,8 +143,9 @@ Expected newly-active edges: frame 1 → {8..15}; frame 2 → {8..15}; frame 3 �
 
 ## Generated fixtures
 
-Three fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
-from the closed forms below (`pnpm fixtures`). The derivations are here and the same consistency
+Five fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
+(`pnpm fixtures`, or `pnpm fixtures crane` for one). Three come from the closed forms below; the
+paper airplane and crane are written as folding sequences. The derivations are here and the same consistency
 tests apply, so a mistake in a formula fails the suite rather than slipping through — which is how
 the waterbomb's quadratic and the Miura's parameterisation were both caught while writing them.
 Their crease assignments are measured from the first folded frame rather than asserted, because
@@ -190,6 +191,84 @@ Every face is then a parallelogram, hence planar, and the edges give
 which leave one free parameter. S runs from p (flat) down to p·d/√(d² + q²), where L reaches zero
 and the sheet is folded flat; H, D and L follow from the three equations. The frames are at 35%,
 70% and 97% of that range.
+
+### Folding sequences: `paper-airplane` and `crane`
+
+Neither model has a closed form, so `scripts/folding-sequence.ts` builds them the way a diagram
+reads: each step names a line in the folded model and the layers that turn about it. The sheet is
+kept as convex faces, each with the rigid motion that carries it from the crease pattern to where it
+lies. A fold cuts the chosen layers along its line (a convex face cut by a line stays convex, so the
+crease pattern builds itself) and rotates the pieces on one side. Where a later cut leaves a vertex
+part-way along a neighbour's side, the neighbour gains that vertex too, so every side of every face
+is an edge.
+
+Two things are checked before a file is written, and the usual consistency tests run on the result:
+
+- **No tearing.** Every vertex must land in the same place from every face that holds it, in every
+  frame. This is what rejects a fold that real paper cannot make rigidly — the crane's "fold the top
+  down" precrease was dropped as a step for exactly this reason (see below).
+- **Mountain or valley.** A crease folded flat has no geometric sign (see the conventions above), so
+  the sequence records how it got there. A crease with one side turning lies on the fold line;
+  nudging that side 10⁻³ rad the way it turns gives a small fold angle whose sign is the letter. A
+  crease whose two sides both turn, opposite ways, is the spine of a reverse fold and changes over.
+  A collapse placed directly (the crane's first three frames and its petal folds) takes its letters
+  from the partial angles it passes through, which is one reason those steps have a half-way
+  frame. The Maekawa test (|M − V| = 2 at every flat-folded
+  vertex) is the check on all of this.
+
+### `valid/paper-airplane.fold` — 8 frames
+
+The classic dart from a 1 × √2 sheet (A4), x ∈ [−½, ½], nose at y = √2. Crease down the middle and
+unfold; fold the top corners to the centre (lines from the nose at 45°); fold the new edges to the
+centre (lines from the nose at 22.5°, meeting the long edges at y = √2 − ½(1 + √2)); fold in half
+behind; fold one wing forward and one behind along x = ±0.13, parallel to the keel. The last frame
+opens both wings a quarter-turn, square to the body, so it is the only frame not folded flat.
+
+### `valid/crane.fold` — 15 frames
+
+The traditional crane from a square of half-width 1, as `preliminary-base`. Frames 1–3 are that
+fixture's closed-form collapse (partial, corners meeting, flat), turned by (x, y, z) → (x, z, −y) so
+the flat base lies in z = 0 with the sheet's centre at the top (0, 0) and the corners together at
+the bottom (0, −√2). Coordinates below are in that upright frame.
+
+- **Kite folds.** The front flap's lower edges fold to the centre line along lines from the bottom
+  point bisecting its 45° angle, which meet the sides at K = (±(√2 − 1), −(√2 − 1)). In the crease
+  pattern K is (2 − √2, 0) on the midline, and the lines are the bird base's 22.5° creases.
+- **Unfold**, leaving the horizontal crease through the two K points on the front layers too. On
+  paper you fold the top down and back to make it, but the front flaps are joined along the spine to
+  the back ones above that line, so the top cannot turn over without the back layers — a rigid
+  model tears (the builder caught this). Real paper bends there for a moment; here it is a crease.
+- **Petal folds**, in two frames each: lifted half-way, then flat. The lower part of the front layer
+  turns up about the hinge y = −(√2 − 1). Around each K point four hinges close a loop: the base,
+  which stays put; the petal; the kite flap on the petal; and the layer behind the flap, hinged to
+  the base along the same kite line. That loop is a spherical four-bar linkage, rigid with one
+  degree of freedom: for a given turn of the petal, the flap and the layer behind must meet where
+  two circles on the sphere round K cross. `petalLift` solves that, following the linkage from flat
+  a degree at a time because the circles cross twice and only continuity picks the fold. Half-way
+  (petal at 90°) the layer behind has turned 41.9° towards the viewer and the flap 41.9° the other
+  way; flat, the known half-turns are used, since there the circles only touch. The letters of the
+  flat frame come from the half-way frame's angles, which is how the layer behind ends up in front
+  of its neighbour rather than tucked behind it: my first hand derivation had it the other way,
+  which is also allowed by Maekawa's theorem, but is not where the paper goes. The back repeats
+  it: the bird base.
+
+  The half-way frame is not decoration. Placed straight from the unfolded base to the flat petal,
+  every crease interpolates independently, the solver has no rigid path to follow, and it settled
+  60% of the model's size away from the stored shape, which the landing blend then snapped into
+  place. A rigid variant that kept the kite flaps folded had a path but left a crease the wrong way
+  round, which the Maekawa test caught.
+
+- **Neck and tail.** Each lower flap (the corners (1, 1) and (−1, −1)) is inside-reverse-folded
+  along a line through (0, −(√2 − 1)) at 15° below horizontal, which stands it at 60°. The flap's
+  front layers turn behind and its back layers forward, so its spine flips from valley to mountain.
+- **Head.** The neck is reverse-folded again, 78% of the way up, along the bisector of the neck
+  and a direction a quarter-turn below it.
+- **Wings.** The petals fold down along y = 0, front forward and back behind, and the last frame
+  lifts them a quarter-turn each, so they stand at ±z out of the body.
+
+The legs are not narrowed before the reverse folds. That fold runs from the lower flap up under the
+petal, so on a rigid sheet it has to take the petal's edge with it, which the paper model does not
+do; leaving it out gives a crane with a broader neck and tail.
 
 ## `invalid/` — one file per validation rule
 

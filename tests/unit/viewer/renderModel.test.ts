@@ -17,12 +17,16 @@ describe("buildRenderModel", () => {
     expect(render.triangles).toHaveLength(12);
   });
 
-  it("emits two indices per edge, in the model's edge order", () => {
+  it("emits two vertex indices per drawn crease copy, matching its edge", () => {
     const m = model("book-fold");
     const render = buildRenderModel(m);
-    expect(render.lines).toHaveLength(m.edgesVertices.length * 2);
-    m.edgesVertices.forEach(([a, b], e) => {
-      expect([render.lines[2 * e], render.lines[2 * e + 1]]).toEqual([a, b]);
+    expect(render.creaseVertices).toHaveLength(render.creaseEdge.length * 2);
+    render.creaseEdge.forEach((e, copy) => {
+      const [a, b] = m.edgesVertices[e]!;
+      expect([render.creaseVertices[2 * copy], render.creaseVertices[2 * copy + 1]]).toEqual([
+        a,
+        b,
+      ]);
     });
   });
 

@@ -200,6 +200,20 @@ describe("Solver", () => {
     expect(speed).toBeLessThan(1e-3);
   });
 
+  it("damps paper moving against itself, not paper moving through space", () => {
+    // Damping sits on the axial springs, as in Origami Simulator: it slows the relative motion
+    // of connected vertices. A whole sheet sliding along feels none of it, so a big flap swinging
+    // on its crease is not held back by the number of vertices it happens to have.
+    const { solver, frameCoords, model, solverModel } = setUp("paper-airplane");
+    solver.targets.set(frameTargets(model, solverModel, 0));
+    solver.setPositions(frameCoords(0));
+    for (let i = 0; i < solver.velocities.length; i += 3) solver.velocities[i] = 1;
+    for (let i = 0; i < 100; i++) solver.substep();
+    for (let i = 0; i < solver.velocities.length; i += 3) {
+      expect(solver.velocities[i]).toBeCloseTo(1, 6);
+    }
+  });
+
   it("clears velocities when repositioned", () => {
     const { solver, frameCoords, model, solverModel } = setUp("book-fold");
     solver.setPositions(frameCoords(0));

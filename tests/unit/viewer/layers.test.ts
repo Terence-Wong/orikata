@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadFold, type ResolvedModel } from "@/fold";
-import { buildRenderModel, writeTrianglePositions } from "@/viewer/renderModel";
-import { readFixture } from "../../helpers/fixtures";
+import { buildRenderModel, writeCreases, writeTriangles } from "@/viewer/renderModel";
+import { readFixture, VALID_FIXTURES } from "../../helpers/fixtures";
 
 function model(name: string): ResolvedModel {
   const result = loadFold(readFixture("valid", name));
@@ -19,70 +19,67 @@ describe("buildRenderModel triangle layers", () => {
     const render = buildRenderModel(m);
     // Two quads become four triangles, each with three vertices of its own.
     expect(render.triangleSource).toHaveLength(12);
-    expect(render.triangleLayer).toHaveLength(12);
+    expect(render.triangleFace).toHaveLength(12);
   });
 
-  it("numbers the layers by face, so triangles of one face stay together", () => {
+  it("records each triangle's face, so triangles of one face move together", () => {
+    const render = buildRenderModel(model("book-fold"));
+    expect(render.triangleFace[0]).toBe(render.triangleFace[5]);
+    expect(render.triangleFace[0]).not.toBe(render.triangleFace[11]);
+  });
+
+  it("works out a frame's layers once, when first asked", () => {
     const m = model("book-fold");
     const render = buildRenderModel(m);
-    // The first quad's two triangles share a layer; the second quad's differ from them.
-    expect(render.triangleLayer[0]).toBe(render.triangleLayer[5]);
-    expect(render.triangleLayer[0]).not.toBe(render.triangleLayer[11]);
+    expect(render.layersAt(1)).toBe(render.layersAt(1));
+    // Flat, the halves share a layer; folded, they are on different ones.
+    expect(render.layersAt(0)[0]).toBe(render.layersAt(0)[1]);
+    expect(render.layersAt(1)[0]).not.toBe(render.layersAt(1)[1]);
   });
 });
 
-describe("writeTrianglePositions", () => {
-  it("reproduces the model exactly when the paper has no thickness", () => {
-    const m = model("book-fold");
+describe("writeTriangles", () => {
+  function draw(m: ResolvedModel, frame: number, thickness: number) {
     const render = buildRenderModel(m);
-    const source = frameAsFloat32(m, 0);
-    const out = new Float32Array(render.triangleSource.length * 3);
-    writeTrianglePositions(source, render, 0, out);
-    render.triangleSource.forEach((vertex, i) => {
-      for (let k = 0; k < 3; k++) {
-        expect(out[3 * i + k]).toBeCloseTo(source[3 * vertex + k]!, 6);
-      }
-    });
+    const source = frameAsFloat32(m, frame);
+    const positions = new Float32Array(render.triangleSource.length * 3);
+    const lifts = new Float32Array(render.triangleSource.length * 3);
+    writeTriangles(source, render, render.layersAt(frame), thickness, positions, lifts);
+    return { render, source, positions, lifts };
+  }
+
+  it.each(VALID_FIXTURES)("draws every triangle exactly where %s puts it", (name) => {
+    // Faces used to be moved off the model by their layer, which opened a visible gap at every
+    // crease of the Miura-ori. Only depth is lifted now, so the paper stays joined.
+    const m = model(name);
+    for (const frame of m.frames) {
+      const { render, source, positions } = draw(m, frame.index, 0.01);
+      render.triangleSource.forEach((vertex, i) => {
+        for (let k = 0; k < 3; k++)
+          expect(positions[3 * i + k]).toBeCloseTo(source[3 * vertex + k]!, 6);
+      });
+    }
   });
 
-  it("separates layers that would otherwise sit in the same plane", () => {
-    // Book fold, folded flat: the right half lies exactly on the left half.
+  it("lifts the folded-over half of a book fold one sheet above the half it covers", () => {
     const m = model("book-fold");
-    const render = buildRenderModel(m);
-    const source = frameAsFloat32(m, 1);
-    const out = new Float32Array(render.triangleSource.length * 3);
-    const thickness = 0.01;
-    writeTrianglePositions(source, render, thickness, out);
-
-    // Vertex 1 sits on the crease and belongs to both halves; its two copies must now differ.
-    const copies: number[][] = [];
-    render.triangleSource.forEach((vertex, i) => {
-      if (vertex === 1) copies.push([out[3 * i]!, out[3 * i + 1]!, out[3 * i + 2]!]);
-    });
-    expect(copies.length).toBeGreaterThan(1);
-    const spread = Math.max(...copies.map((p) => p[2]!)) - Math.min(...copies.map((p) => p[2]!));
-    expect(spread).toBeGreaterThan(thickness / 2);
+    const { render, lifts } = draw(m, 1, 0.01);
+    // Folded flat in the xy plane: the lifts are along z, and the valley puts the moved half on top.
+    const liftOf = (face: number) => lifts[3 * render.triangleFace.indexOf(face) + 2]!;
+    expect(liftOf(1) - liftOf(0)).toBeCloseTo(0.01, 6);
   });
 
-  it("moves nothing further than the thickness it was given", () => {
+  it("gives every triangle of a face the same lift, of its layer's thickness", () => {
     const m = model("preliminary-base");
-    const render = buildRenderModel(m);
-    const source = frameAsFloat32(m, 2);
-    const out = new Float32Array(render.triangleSource.length * 3);
-    const thickness = 0.005;
-    writeTrianglePositions(source, render, thickness, out);
-    const layers = Math.max(...render.triangleLayer) + 1;
-    render.triangleSource.forEach((vertex, i) => {
-      const moved = Math.hypot(
-        out[3 * i]! - source[3 * vertex]!,
-        out[3 * i + 1]! - source[3 * vertex + 1]!,
-        out[3 * i + 2]! - source[3 * vertex + 2]!,
-      );
-      expect(moved).toBeLessThanOrEqual(thickness * layers + 1e-6);
+    const { render, lifts } = draw(m, 3, 0.005);
+    const layers = render.layersAt(3);
+    render.triangleFace.forEach((face, i) => {
+      const length = Math.hypot(lifts[3 * i]!, lifts[3 * i + 1]!, lifts[3 * i + 2]!);
+      expect(length).toBeCloseTo(0.005 * Math.abs(layers[face]!), 6);
     });
   });
 
-  it("leaves a degenerate triangle where it is rather than producing NaN", () => {
+  it("gives a degenerate triangle no lift rather than NaN", () => {
     const flat = loadFold(
       JSON.stringify({
         vertices_coords: [
@@ -111,9 +108,36 @@ describe("writeTrianglePositions", () => {
     );
     expect(flat.ok).toBe(true);
     if (!flat.ok) return;
-    const render = buildRenderModel(flat.model);
-    const out = new Float32Array(render.triangleSource.length * 3);
-    writeTrianglePositions(frameAsFloat32(flat.model, 0), render, 0.01, out);
-    expect(Array.from(out).every(Number.isFinite)).toBe(true);
+    const { positions, lifts } = draw(flat.model, 0, 0.01);
+    expect([...positions, ...lifts].every(Number.isFinite)).toBe(true);
+  });
+});
+
+describe("writeCreases", () => {
+  it("draws each crease on both sides of every face it borders", () => {
+    const render = buildRenderModel(model("book-fold"));
+    // Crease 6 borders two faces; the six boundary edges border one each. Two sides apiece.
+    expect(render.creaseEdge).toHaveLength((2 + 6) * 2);
+    expect(render.creaseEdge.filter((e) => e === 6)).toHaveLength(4);
+  });
+
+  it("draws creases on the model, lifting each copy's depth just off its own face and side", () => {
+    const m = model("book-fold");
+    const render = buildRenderModel(m);
+    const layers = render.layersAt(1);
+    const thickness = 0.01;
+    const source = frameAsFloat32(m, 1);
+    const positions = new Float32Array(render.creaseVertices.length * 3);
+    const lifts = new Float32Array(render.creaseVertices.length * 3);
+    writeCreases(source, render, layers, thickness, positions, lifts);
+    render.creaseEdge.forEach((_, copy) => {
+      const face = render.creaseFace[copy]!;
+      const side = render.creaseSide[copy]!;
+      const vertex = render.creaseVertices[2 * copy]!;
+      expect(positions[3 * (2 * copy)]).toBeCloseTo(source[3 * vertex]!, 6);
+      const faceUp = face === 0 ? 1 : -1; // The right half is turned over.
+      const lift = lifts[3 * (2 * copy) + 2]!;
+      expect(lift / (thickness * faceUp)).toBeCloseTo(layers[face]! + side * 0.3, 6);
+    });
   });
 });

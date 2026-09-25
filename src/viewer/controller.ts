@@ -28,6 +28,10 @@ export class ViewerController {
   private state: ViewerState;
   /** Set whenever the positions buffer changes outside a transition, so the scene redraws. */
   private positionsChanged = true;
+  /** After a scrub, the animator may still be settling towards the shape at that position. */
+  private settling = false;
+  /** The two frames the paper is between, while a step plays or is scrubbed. */
+  private between: [from: number, to: number] | null = null;
 
   constructor(
     private readonly model: ResolvedModel,
@@ -57,6 +61,27 @@ export class ViewerController {
     return this.model.frames[this.state.frameIndex]!.assignments;
   }
 
+  /**
+   * The frame whose stacking order to draw the paper in: of the two the paper is between, the one
+   * it is nearer. Sheets only lie on each other near either end of a step, and there the order of
+   * that end is the right one; the frame being moved to would be wrong while the paper is still
+   * in the previous frame's stack.
+   */
+  stackingFrame(): number {
+    if (!this.between) return this.state.frameIndex;
+    const [from, to] = this.between;
+    return this.distanceTo(from) < this.distanceTo(to) ? from : to;
+  }
+
+  private distanceTo(frame: number): number {
+    const coords = this.model.frames[frame]!.coords;
+    let worst = 0;
+    for (let i = 0; i < coords.length; i++) {
+      worst = Math.max(worst, Math.abs(this.positions[i]! - coords[i]!));
+    }
+    return worst;
+  }
+
   currentFrame() {
     return this.model.frames[this.state.frameIndex]!;
   }
@@ -73,6 +98,8 @@ export class ViewerController {
   goTo(index: number): void {
     const { frameIndex, frameCount } = this.state;
     if (index === frameIndex || index < 0 || index >= frameCount) return;
+    this.settling = false;
+    this.between = [frameIndex, index];
     this.animator.beginTransition(frameIndex, index);
     this.setState({
       frameIndex: index,
@@ -92,8 +119,10 @@ export class ViewerController {
     // Frame 0 is the starting shape: there is no step leading into it to scrub.
     if (frameIndex === 0) return;
     const clamped = Math.min(Math.max(progress, 0), 1);
+    this.between = [frameIndex - 1, frameIndex];
     this.animator.seek(frameIndex - 1, frameIndex, clamped);
     this.positionsChanged = true;
+    this.settling = true;
     this.setState({ stepProgress: clamped, transitioning: false });
   }
 
@@ -104,7 +133,13 @@ export class ViewerController {
   /** Advances the animation. Returns true when the positions buffer changed. */
   tick(dtSeconds: number): boolean {
     if (!this.state.transitioning) {
-      // Scrubbing moves the model without a transition running, so the scene is told once.
+      if (this.settling) {
+        // Scrubbing moves the model without a transition running; the animator finishes settling
+        // over the next frames.
+        this.positionsChanged = false;
+        if (this.animator.step(dtSeconds) === "idle") this.settling = false;
+        return true;
+      }
       const changed = this.positionsChanged;
       this.positionsChanged = false;
       return changed;

@@ -1,7 +1,12 @@
-/** Solver iterations per second of animation, so a fold takes the same time at any frame rate. */
-export const SUBSTEPS_PER_SECOND = 1500;
+/**
+ * Solver iterations per second of animation, so a fold takes the same time at any frame rate.
+ * A crease pattern divided into many faces needs several thousand iterations for a big flap to
+ * finish its swing within a step; with too few the solver lags and the landing blend visibly
+ * snaps the model into place. The time budget below keeps a heavy model's frame rate.
+ */
+export const SUBSTEPS_PER_SECOND = 6000;
 /** Never spend more than this many iterations on one rendered frame, however long it was. */
-export const MAX_SUBSTEPS_PER_FRAME = 120;
+export const MAX_SUBSTEPS_PER_FRAME = 400;
 /** Milliseconds of each rendered frame the solver may use before it starts cutting iterations. */
 export const SOLVER_BUDGET_MS = 4;
 

@@ -20,7 +20,7 @@ describe("planSubsteps", () => {
   });
 
   it("cuts the count to fit the time budget on an expensive model", () => {
-    // 0.5 ms a substep leaves room for 8 in a 4 ms budget, well under the 25 the rate asks for.
+    // 0.5 ms a substep leaves room for 8 in a 4 ms budget, well under what the rate asks for.
     expect(planSubsteps(1 / 60, 0.5, BUDGET)).toBe(8);
   });
 

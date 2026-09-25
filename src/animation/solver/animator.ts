@@ -6,22 +6,48 @@ import { applyRotation, applyTransform, kabsch } from "./kabsch";
 import { buildSolverModel, denormalise, frameTargets, normalise, type SolverModel } from "./model";
 import { Solver } from "./solver";
 
-/** Once the tween is over, keep solving for at most this long before landing. */
-export const SETTLE_SECONDS = 0.4;
+/**
+ * Once the tween is over, keep solving for at most this many iterations before landing: a second's
+ * worth at the full rate. Most steps are within tolerance long before; a big flap swinging a long
+ * way uses more of it, and what shows is the end of its swing rather than a snap. Counted in work
+ * done rather than time passed, so a slow device takes longer to settle but still gets there.
+ */
+export const SETTLE_SUBSTEPS = 6000;
+/** However slow the device, stop settling a step after this long. */
+export const SETTLE_MAX_SECONDS = 6;
+/** Settling always gets this long, however little the frame budget allows. */
+const SETTLE_MIN_SECONDS = 1;
 /** How long the solved shape is blended onto the author's stored geometry. */
 export const LANDING_SECONDS = 0.15;
 /**
- * Most iterations spent on one move of the scrubber. The solver is a relaxation, so where it ends
- * up depends on where it came from; running it to convergence means the scrubber shows the same
- * model at the same position whether it was dragged there or jumped there.
+ * Milliseconds spent solving on one move of the scrubber, so dragging stays responsive. Whatever is
+ * left is solved over the following frames (see `step`), until the model has settled.
  */
-export const SCRUB_MAX_SUBSTEPS = 400;
+export const SCRUB_SLICE_MS = 12;
+/** How many iterations the model may keep settling for after the scrubber stops. */
+export const SCRUB_SETTLE_SUBSTEPS = 6000;
+/** However slow the device, stop settling after a scrub after this long. */
+export const SCRUB_SETTLE_MAX_SECONDS = 8;
+/**
+ * Iterations a move of the scrubber always gets, however little time it has, so a small model
+ * settles in the same place on a busy machine as on an idle one.
+ */
+export const SCRUB_MIN_SUBSTEPS = 400;
 /** How often convergence is checked while scrubbing. */
 const SCRUB_CHECK_EVERY = 25;
+/**
+ * How close the scrubber settles, in radians (0.1°). Tighter than a step's landing: the model is
+ * held still to be looked at, and reached from either side as the slider moves back and forth,
+ * so both approaches should arrive at the same shape.
+ */
+export const SCRUB_TOLERANCE = (0.1 * Math.PI) / 180;
 /** Good enough to stop settling early, in radians (0.5°). */
 export const SETTLE_TOLERANCE = (0.5 * Math.PI) / 180;
 
-type Phase = "idle" | "tweening" | "settling" | "landing";
+type Phase = "idle" | "tweening" | "settling" | "landing" | "scrubbing";
+
+/** What the solver's state is currently a solution of: a stored frame, or a point in a step. */
+type Standing = { frame: number } | { from: number; to: number } | null;
 
 /** What the last transition cost, for the prototype comparison. */
 export interface TransitionDiagnostics {
@@ -69,6 +95,11 @@ export class SolverAnimator implements FoldAnimator {
   private poseFrom: Float64Array = new Float64Array(0);
   private anglesFrom: Float64Array = new Float64Array(0);
   private diagnostics: TransitionDiagnostics = emptyDiagnostics();
+  private standing: Standing = null;
+  private scrubProgress = 0;
+  private scrubbed = 0;
+  private scrubSubsteps = 0;
+  private settleSubsteps = 0;
 
   init(model: ResolvedModel, out: Float32Array): void {
     this.positions = out;
@@ -93,6 +124,7 @@ export class SolverAnimator implements FoldAnimator {
     // Targets first, so a crease that is already folded flat resolves to the author's sign.
     this.solver.targets.set(this.frameAngles[frame]!);
     this.solver.setPositions(coords);
+    this.standing = { frame };
     this.write(coords);
   }
 
@@ -106,14 +138,21 @@ export class SolverAnimator implements FoldAnimator {
     this.toFrame = to;
     this.elapsed = 0;
     this.settled = 0;
+    this.settleSubsteps = 0;
     this.landed = 0;
     this.diagnostics = emptyDiagnostics();
+    this.standing = null;
     this.phase = "tweening";
   }
 
   /**
    * Places the model part-way between two frames for the scrubber. The solver is a relaxation, not
    * a recording, so it tracks whatever targets it is given and this works in either direction.
+   *
+   * Within a step it carries on from where it is, so dragging moves the paper continuously and
+   * each position is a small correction to the last. Arriving from elsewhere it starts from the
+   * step's first frame. It solves for a slice of time here and leaves the rest to `step`, which
+   * keeps going until the model has settled.
    */
   seek(from: number, to: number, progress: number): void {
     const solver = this.solver;
@@ -124,44 +163,66 @@ export class SolverAnimator implements FoldAnimator {
     const s = Math.min(Math.max(progress, 0), 1);
     const anglesFrom = this.frameAngles[from]!;
     const anglesTo = this.frameAngles[to]!;
-    for (let h = 0; h < solver.targets.length; h++) {
-      solver.targets[h] = anglesFrom[h]! + s * (anglesTo[h]! - anglesFrom[h]!);
-    }
 
     // Land exactly on a stored frame at either end, so scrubbing to a step matches stepping to it.
     if (s === 0 || s === 1) {
-      solver.setPositions(s === 0 ? start : end);
-      this.phase = "idle";
-      this.write(solver.positions);
+      this.jumpTo(s === 0 ? from : to);
       return;
     }
 
-    // Always relax from the starting frame, so where the scrubber lands depends only on where it
-    // is, not on how it got there. Dragging and jumping then agree.
-    solver.setPositions(start);
+    const standing = this.standing;
+    const inStep =
+      standing !== null &&
+      ("frame" in standing
+        ? standing.frame === from || standing.frame === to
+        : standing.from === from && standing.to === to);
+    if (!inStep) {
+      // Resolve flat creases against the frame's own targets before moving them.
+      solver.targets.set(anglesFrom);
+      solver.setPositions(start);
+    }
     for (let h = 0; h < solver.targets.length; h++) {
       solver.targets[h] = anglesFrom[h]! + s * (anglesTo[h]! - anglesFrom[h]!);
     }
-    this.poseFrom = start;
+    this.standing = { from, to };
+    this.poseFrom.set(start);
     this.toFrame = to;
-    for (let i = 1; i <= SCRUB_MAX_SUBSTEPS; i++) {
+    this.scrubProgress = s;
+    this.scrubbed = 0;
+    this.scrubSubsteps = 0;
+
+    const started = performance.now();
+    let converged = false;
+    for (let i = 1; !converged; i++) {
       solver.substep();
-      if (i % SCRUB_CHECK_EVERY === 0 && solver.maxAngleError() < SETTLE_TOLERANCE) break;
+      if (i % SCRUB_CHECK_EVERY !== 0) continue;
+      converged = solver.maxAngleError() < SCRUB_TOLERANCE;
+      if (i >= SCRUB_MIN_SUBSTEPS && performance.now() - started > SCRUB_SLICE_MS) break;
     }
-    for (let i = 0; i < this.reference.length; i++) {
-      const a = start[i]!;
-      this.reference[i] = a + s * (end[i]! - a);
-    }
-    const transform = kabsch(solver.positions, this.reference);
-    applyTransform(transform, solver.positions);
-    applyRotation(transform.rotation, solver.velocities);
-    this.phase = "idle";
+    this.seatOnto(s);
+    this.phase = converged ? "idle" : "scrubbing";
     this.write(solver.positions);
   }
 
   step(dtSeconds: number): TransitionState {
     const solver = this.solver;
     if (!solver || this.phase === "idle") return "idle";
+
+    if (this.phase === "scrubbing") {
+      this.scrubbed += dtSeconds;
+      this.scrubSubsteps += this.runSubsteps(dtSeconds);
+      this.seatOnto(this.scrubProgress);
+      this.write(solver.positions);
+      const working = worthSettling(
+        this.scrubbed,
+        this.scrubSubsteps,
+        SCRUB_SETTLE_SUBSTEPS,
+        SCRUB_SETTLE_MAX_SECONDS,
+      );
+      if (solver.maxAngleError() > SCRUB_TOLERANCE && working) return "running";
+      this.phase = "idle";
+      return "idle";
+    }
 
     if (this.phase === "landing") return this.stepLanding(dtSeconds);
 
@@ -185,11 +246,17 @@ export class SolverAnimator implements FoldAnimator {
     // Settling: the targets are final, so let the shape catch up before it is handed over.
     this.settled += dtSeconds;
     this.diagnostics.settleFrames += 1;
-    this.runSubsteps(dtSeconds);
+    this.settleSubsteps += this.runSubsteps(dtSeconds);
     this.seatOnto(1);
     this.write(solver.positions);
     const residual = solver.maxAngleError();
-    if (residual > SETTLE_TOLERANCE && this.settled < SETTLE_SECONDS) return "landing";
+    const working = worthSettling(
+      this.settled,
+      this.settleSubsteps,
+      SETTLE_SUBSTEPS,
+      SETTLE_MAX_SECONDS,
+    );
+    if (residual > SETTLE_TOLERANCE && working) return "landing";
 
     this.diagnostics.residualAtLandingDeg = toDegrees(residual);
     this.landingStart.set(solver.positions);
@@ -233,6 +300,7 @@ export class SolverAnimator implements FoldAnimator {
     if (u >= 1) {
       solver.targets.set(this.frameAngles[this.toFrame]!);
       solver.setPositions(target);
+      this.standing = { frame: this.toFrame };
       this.phase = "idle";
       this.write(target);
       return "idle";
@@ -250,7 +318,7 @@ export class SolverAnimator implements FoldAnimator {
    * so it loses accuracy rather than frame rate; the landing blend still puts it exactly on the
    * author's geometry at the end of the step.
    */
-  private runSubsteps(dtSeconds: number): void {
+  private runSubsteps(dtSeconds: number): number {
     const solver = this.solver!;
     const count = planSubsteps(dtSeconds, this.msPerSubstep, this.budgetMs);
     const started = performance.now();
@@ -258,6 +326,7 @@ export class SolverAnimator implements FoldAnimator {
     const each = (performance.now() - started) / count;
     // Smoothed, so one slow frame does not starve the next.
     this.msPerSubstep = this.msPerSubstep === 0 ? each : this.msPerSubstep * 0.8 + each * 0.2;
+    return count;
   }
 
   /**
@@ -283,6 +352,24 @@ export class SolverAnimator implements FoldAnimator {
     if (!solverModel) return;
     denormalise(normalised, solverModel.scale, solverModel.offset, this.positions);
   }
+}
+
+/**
+ * Whether to keep settling. A slow device keeps going until the iteration count is reached,
+ * because it will get there; a model too big for its frame budget, which would take far longer
+ * than the backstop at the rate it is going, stops after a second and lets the landing blend
+ * finish the step.
+ */
+function worthSettling(
+  elapsed: number,
+  substeps: number,
+  enough: number,
+  backstop: number,
+): boolean {
+  if (substeps >= enough || elapsed >= backstop) return false;
+  if (elapsed < SETTLE_MIN_SECONDS) return true;
+  const projected = (elapsed * enough) / Math.max(substeps, 1);
+  return projected <= backstop;
 }
 
 function emptyDiagnostics(): TransitionDiagnostics {

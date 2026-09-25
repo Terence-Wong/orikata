@@ -15,7 +15,10 @@ function shortestDelta(angle: number, previous: number): number {
  * Origami Simulator (MIT), described in "Fast, Interactive Origami Simulation using GPU
  * Computation" (Ghassaei, Demaine, Gershenfeld, 7OSME 2018). Axial springs hold edge lengths,
  * torsional springs drive each crease towards a target angle, and face angle springs resist
- * shearing. Integration is semi-implicit Euler with per-node damping.
+ * shearing. Integration is semi-implicit Euler. Damping sits on the axial springs, acting on the
+ * difference in velocity of the two vertices each joins, as in the original: it slows the paper
+ * moving against itself but not the paper moving through space, so a large flap swinging on its
+ * crease is not held back by how finely it happens to be divided.
  *
  * Positions and velocities are in the model's normalised space; the caller converts.
  */
@@ -26,6 +29,7 @@ export class Solver {
   readonly targets: Float64Array;
 
   private readonly forces: Float64Array;
+  /** Damping coefficient of each axial spring. */
   private readonly damping: Float64Array;
   /**
    * Fold angles accumulated across the ±π boundary. A measured angle cannot tell a crease folded to
@@ -46,7 +50,7 @@ export class Solver {
     this.continuous = new Float64Array(model.hinges.length);
     this.measured = new Float64Array(model.hinges.length);
     // Critical damping for a unit mass is 2√k; the ratio scales that.
-    this.damping = Float64Array.from(model.nodeStiffness, (k) => DAMPING_RATIO * 2 * Math.sqrt(k));
+    this.damping = Float64Array.from(model.axial, ({ k }) => DAMPING_RATIO * 2 * Math.sqrt(k));
   }
 
   /**
@@ -80,15 +84,10 @@ export class Solver {
     this.trackAngles();
     this.accumulateForces();
     const { dt } = this.model;
-    for (let node = 0; node < this.model.vertexCount; node++) {
-      const c = this.damping[node]!;
-      for (let axis = 0; axis < 3; axis++) {
-        const i = 3 * node + axis;
-        const acceleration = this.forces[i]! - c * this.velocities[i]!;
-        const velocity = this.velocities[i]! + acceleration * dt;
-        this.velocities[i] = velocity;
-        this.positions[i] = this.positions[i]! + velocity * dt;
-      }
+    for (let i = 0; i < this.positions.length; i++) {
+      const velocity = this.velocities[i]! + this.forces[i]! * dt;
+      this.velocities[i] = velocity;
+      this.positions[i] = this.positions[i]! + velocity * dt;
     }
   }
 
@@ -124,14 +123,20 @@ export class Solver {
   private accumulateForces(): void {
     this.forces.fill(0);
 
-    for (const spring of this.model.axial) {
+    this.model.axial.forEach((spring, s) => {
       const a = 3 * spring.a;
       const b = 3 * spring.b;
+      const c = this.damping[s]!;
+      for (let axis = 0; axis < 3; axis++) {
+        const pull = c * (this.velocities[b + axis]! - this.velocities[a + axis]!);
+        this.forces[a + axis] = this.forces[a + axis]! + pull;
+        this.forces[b + axis] = this.forces[b + axis]! - pull;
+      }
       const dx = this.positions[b]! - this.positions[a]!;
       const dy = this.positions[b + 1]! - this.positions[a + 1]!;
       const dz = this.positions[b + 2]! - this.positions[a + 2]!;
       const length = Math.hypot(dx, dy, dz);
-      if (length === 0) continue;
+      if (length === 0) return;
       const magnitude = (spring.k * (length - spring.restLength)) / length;
       this.forces[a] = this.forces[a]! + magnitude * dx;
       this.forces[a + 1] = this.forces[a + 1]! + magnitude * dy;
@@ -139,7 +144,7 @@ export class Solver {
       this.forces[b] = this.forces[b]! - magnitude * dx;
       this.forces[b + 1] = this.forces[b + 1]! - magnitude * dy;
       this.forces[b + 2] = this.forces[b + 2]! - magnitude * dz;
-    }
+    });
 
     this.model.hinges.forEach((hinge, i) => {
       const error = this.continuous[i]! - this.targets[i]!;

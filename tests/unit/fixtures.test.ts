@@ -108,6 +108,41 @@ describe.each(VALID_FIXTURES)("fixture %s is internally consistent", (name) => {
     }
   });
 
+  it("satisfies Maekawa's theorem at every vertex folded flat", () => {
+    // Around a flat-folded interior vertex the mountains and valleys differ by exactly two. A
+    // geometry check cannot see a wrong M/V letter on a flat crease; this catches most of them.
+    const interior = new Set<number>();
+    const boundary = new Set<number>();
+    const incident: number[][] = Array.from({ length: model.vertexCount }, () => []);
+    model.edgesVertices.forEach(([a, b], e) => {
+      const target = model.edgesFaces[e]!.length === 2 ? interior : boundary;
+      target.add(a);
+      target.add(b);
+      incident[a]!.push(e);
+      incident[b]!.push(e);
+    });
+    for (const frame of laterFrames) {
+      for (let v = 0; v < model.vertexCount; v++) {
+        if (boundary.has(v) || !interior.has(v)) continue;
+        const creases = incident[v]!.map((e) => ({ e, theta: angle(model, frame.index, e) }));
+        const flat = creases.every(
+          ({ theta }) => Math.abs(theta) < 1e-4 || Math.abs(theta) > 179.9999,
+        );
+        const folded = creases.filter(({ theta }) => Math.abs(theta) > 179.9999);
+        if (!flat || folded.length === 0) continue;
+        const mountains = folded.filter(({ e }) => frame.assignments[e] === "M").length;
+        const valleys = folded.filter(({ e }) => frame.assignments[e] === "V").length;
+        expect(Math.abs(mountains - valleys), `vertex ${v} in frame ${frame.index}`).toBe(2);
+      }
+    }
+  });
+
+  it("moves at least one crease in every step", () => {
+    for (const frame of laterFrames) {
+      expect(frame.newlyActive.length, `frame ${frame.index}`).toBeGreaterThan(0);
+    }
+  });
+
   it("has no newly-active edges at frame 0", () => {
     expect(frame0.newlyActive).toEqual([]);
     expect(frame0.parentIndex).toBeNull();
@@ -207,6 +242,47 @@ describe("preliminary-base", () => {
     expect(model.frames[1]!.newlyActive).toEqual(range(8, 15));
     expect(model.frames[2]!.newlyActive).toEqual(range(8, 15));
     expect(model.frames[3]!.newlyActive).toEqual(diagonals);
+  });
+});
+
+describe("paper-airplane", () => {
+  const model = loadValid("paper-airplane");
+
+  it("folds flat at every step until the wings open", () => {
+    const flat = (index: number) =>
+      model.frames[index]!.foldAngles.every(
+        (theta) => Number.isNaN(theta) || Math.abs(theta) < 1e-4 || Math.abs(theta) > 179.9999,
+      );
+    const last = model.frames.length - 1;
+    for (let i = 1; i < last; i++) expect(flat(i), `frame ${i}`).toBe(true);
+    expect(flat(last)).toBe(false);
+  });
+
+  it("opens the wings to a right angle with the body", () => {
+    const last = model.frames[model.frames.length - 1]!;
+    const opened = last.foldAngles.filter((theta) => Math.abs(Math.abs(theta) - 90) < 1e-6);
+    expect(opened.length).toBeGreaterThan(0);
+  });
+});
+
+describe("crane", () => {
+  const model = loadValid("crane");
+
+  it("starts with the preliminary base's collapse", () => {
+    // Frame 1 is the same partial collapse as preliminary-base frame 1: midlines at −90°.
+    const midlineAngles = model.frames[1]!.foldAngles.filter(
+      (theta) => Math.abs(theta + 90) < 1e-6,
+    );
+    expect(midlineAngles.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("ends with the wings spread, off the flat", () => {
+    const last = model.frames[model.frames.length - 1]!;
+    expect(last.foldAngles.some((theta) => Math.abs(Math.abs(theta) - 90) < 1e-6)).toBe(true);
+  });
+
+  it("stays under the solver's full-simulation limit", () => {
+    expect(model.vertexCount).toBeLessThanOrEqual(600);
   });
 });
 

@@ -55,7 +55,9 @@ The build is one pass with a hard stop after both animation prototypes run on th
 **What gets ported** (`src/animation/solver/`, ~500–700 lines TS, typed arrays, attribution header):
 
 - Mechanical model, unchanged from the original / the 7OSME paper: per-vertex mass; axial springs on
-  every triangulated edge (stiffness EA/L₀, EA=20) with damping (ratio ≈ 0.45); crease torsional
+  every triangulated edge (stiffness EA/L₀, EA=20) with damping (ratio ≈ 0.45) on the relative
+  velocity of the two ends (fixed 2026-09-25: the port had damped each vertex's absolute velocity,
+  which dragged on rigid motion and left finely divided flaps lagging); crease torsional
   springs on interior edges (k = k_fold·L₀, k_fold = 0.7 for M/V, 0.2 for facet creases) using the
   Bridson-style hinge force distribution across the four hinge vertices; face angle springs (k = 0.2)
   that stop triangles shearing; explicit integration with `dt` from the stiffest axial spring's
@@ -172,10 +174,15 @@ construction. Expected failure: the book fold's moving half shrinks to a line at
    target angles from 3.5.
 2. `beginTransition`: warm start from current positions, velocities zeroed; Kabsch rigid transform
    between stored frames interpolated as a global pose.
-3. `step`: s = ease(t); targets `θ_from + s·(θ_to − θ_from)`; solver substeps within a budget (start
-   50/frame); remove drift; apply pose; write positions.
-4. At s = 1: solve until residual < 0.5° or 400 ms cap, then **landing blend** onto the stored
-   frame over 150 ms, then snap exactly.
+3. `step`: s = ease(t); targets `θ_from + s·(θ_to − θ_from)`; solver substeps within a budget
+   (6000/s, capped at 4 ms of each frame; tuned 2026-09-25 from 1500/s); remove drift; apply pose;
+   write positions.
+4. At s = 1: solve until residual < 0.5° or 6000 iterations (was a 400 ms cap; big flaps on
+   finely divided crease patterns need the work, and counting iterations rather than time lets a
+   slow device finish too; a model too big to finish within 6 s stops after 1 s), then **landing
+   blend** onto the stored frame over 150 ms, then snap exactly. The scrubber warm-starts within a
+   step and keeps settling over the following frames on the same terms. `tests/unit/animation/landing.test.ts` holds every bundled model's landing blend,
+   and the scrubber's last 1%, to under 3% of the model's size.
 5. Facet creases target 0 with facet stiffness; boundary edges have no crease spring.
 
 ### 4.4 Comparison harness (checkpoint deliverable)
@@ -339,15 +346,20 @@ Test-visible state on the viewer root: `data-loaded`, `data-frame-index`, `data-
 - Transition duration is a fixed 800 ms.
 - Edges with > 2 faces and faces with < 3 vertices are rejected; 2D coordinates in any frame are
   z = 0.
-- Accepted v1 limitations: no collision detection (layers may clip), z-fighting on coincident
-  flat-folded layers.
+- Accepted v1 limitations: no collision detection (layers may clip). Coincident flat-folded
+  layers no longer z-fight (2026-09-25): `src/viewer/layers.ts` orders the sheets from each
+  crease's M/V plus the taco–taco, taco–tortilla and transitivity rules (`flatOrder.ts`), and the
+  shader lifts only depth by layer, so nothing moves on screen and no gaps open at creases. The
+  order is a best guess where the rules leave a choice, and stacks too large to search fall back
+  to a heuristic; `faceOrders` is still not read.
 
 ## 10. Risks and unknowns
 
 1. Solver port effort and tuning (largest schedule item).
 2. CPU solver performance on large models; Worker fallback available.
 3. Pose drift / visible settle in Option B — quantified in the report.
-4. Flat-folded states: z-fighting; dihedral sign undefined at ±180° (assignment tie-break).
+4. Flat-folded states: layer order is inferred, not read from the file (see section 9); dihedral
+   sign undefined at ±180° (assignment tie-break).
 5. Non-convex / non-planar / non-manifold faces in real-world files are rejected or ear-clipped.
 6. Real-world FOLD variety (re-indexed vertices rejected by design).
 7. Vercel Blob details to confirm at build time: CORS on public GETs (fallback: streaming proxy

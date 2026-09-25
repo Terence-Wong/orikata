@@ -191,6 +191,40 @@ describe("ViewerController", () => {
     expect(controller.tick(1 / 60)).toBe(false);
   });
 
+  it("keeps the animator settling after a scrub until it says it is done", () => {
+    // A solver may not have converged within one move of the slider; it carries on, frame by
+    // frame, rather than leaving the model part-way or snapping it.
+    controller.next();
+    controller.tick(1 / 60);
+    controller.tick(1 / 60);
+    controller.scrubStep(0.5);
+    animator.stepsRemaining = 3;
+    const redraws = [1, 2, 3, 4, 5].map(() => controller.tick(1 / 60));
+    expect(redraws).toEqual([true, true, true, false, false]);
+    expect(controller.getState().transitioning).toBe(false);
+  });
+
+  it("takes the stacking order from whichever end of the step the paper is nearer", () => {
+    // Sheets lying on each other only matter near either end of a step. At the start of a step
+    // they are still in the previous frame's stack, and drawing them in the next frame's order
+    // would flash one layer through another.
+    const m = model("book-fold-90");
+    const place = (frame: number) => controller.positions.set(m.frames[frame]!.coords);
+    controller.goTo(1);
+    place(0);
+    expect(controller.stackingFrame()).toBe(0);
+    place(1);
+    expect(controller.stackingFrame()).toBe(1);
+    controller.tick(1 / 60);
+    controller.tick(1 / 60);
+    controller.goTo(2);
+    controller.scrubStep(0.1);
+    place(1);
+    expect(controller.stackingFrame()).toBe(1);
+    place(2);
+    expect(controller.stackingFrame()).toBe(2);
+  });
+
   it("clamps a progress outside the step", () => {
     controller.next();
     controller.scrubStep(-5);

@@ -67,12 +67,19 @@ describe.each(ANIMATORS)("%s seek", (_name, make) => {
     expect(deviation(out, model, 1)).toBeGreaterThan(1e-4);
   });
 
-  it("is repeatable: seeking to the same place twice gives the same model", () => {
+  it("is repeatable: seeking to the same place twice settles on the same model", () => {
+    // A seek may leave the solver still settling, which it finishes over the next frames; what
+    // must agree is where it settles, not how far one call got on a busy machine.
     const { animator, out } = setUp(make);
+    const settle = () => {
+      for (let frame = 0; frame < 600 && animator.step(1 / 60) !== "idle"; frame++);
+    };
     animator.seek(0, 1, 0.4);
+    settle();
     const first = Float32Array.from(out);
     animator.seek(0, 1, 1);
     animator.seek(0, 1, 0.4);
+    settle();
     for (let i = 0; i < out.length; i++) expect(out[i]).toBeCloseTo(first[i]!, 2);
   });
 
@@ -116,6 +123,32 @@ describe.each(ANIMATORS)("%s seek", (_name, make) => {
 });
 
 describe("solver seek", () => {
+  it("never changes the stored frames, so a step played after scrubbing lands where it should", () => {
+    const model = load("book-fold-90");
+    const animator = new SolverAnimator();
+    const out = new Float32Array(model.vertexCount * 3);
+    animator.init(model, out);
+    animator.jumpTo(1);
+    animator.seek(0, 1, 0.5);
+    animator.beginTransition(1, 2);
+    for (let i = 0; i < 600 && animator.step(1 / 60) !== "idle"; i++);
+    animator.jumpTo(0);
+    expect(deviation(out, model, 0)).toBeLessThan(1e-5);
+  });
+
+  it("keeps settling after a move of the scrubber until the solver has converged", () => {
+    const model = load("crane");
+    const animator = new SolverAnimator();
+    const out = new Float32Array(model.vertexCount * 3);
+    animator.init(model, out);
+    animator.jumpTo(9);
+    animator.seek(9, 10, 0.6);
+    let frames = 0;
+    while (animator.step(1 / 60) !== "idle" && frames < 600) frames++;
+    expect(frames).toBeGreaterThan(0);
+    expect(frames).toBeLessThan(600);
+  });
+
   it("holds the paper rigid while scrubbing, which interpolation does not", () => {
     const model = load("book-fold");
     const measure = (animator: FoldAnimator) => {

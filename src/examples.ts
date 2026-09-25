@@ -45,6 +45,16 @@ export const EXAMPLES: readonly Example[] = [
     title: "Miura-ori",
     blurb: "A tessellation of forty-eight panels with a single degree of freedom.",
   },
+  {
+    name: "paper-airplane",
+    title: "Paper airplane",
+    blurb: "The classic dart from an A4 sheet, ending with the wings opened level.",
+  },
+  {
+    name: "crane",
+    title: "Crane",
+    blurb: "The traditional orizuru: preliminary base, petal folds, reverse folds, wings spread.",
+  },
 ] as const;
 
 export function findExample(name: string): Example | undefined {
