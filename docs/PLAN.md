@@ -184,6 +184,17 @@ construction. Expected failure: the book fold's moving half shrinks to a line at
    step and keeps settling over the following frames on the same terms. `tests/unit/animation/landing.test.ts` holds every bundled model's landing blend,
    and the scrubber's last 1%, to under 3% of the model's size.
 5. Facet creases target 0 with facet stiffness; boundary edges have no crease spring.
+6. Rigid steps (added 2026-09-25, `src/animation/rigidPath.ts`). Walking a spanning tree of faces
+   from the least-moving one and turning each face about its crease by the interpolated fold angle
+   gives exact rigid folding. Where the faces around every vertex agree part-way (closure error
+   under 10⁻⁶ of the model's size) the step is played that way and not solved: most plain folds,
+   so a stack of layers swings over as one block with nothing passing through anything and no
+   landing blend. Where they nearly agree (under 6%: collapses, petal folds, the Miura) each frame
+   starts from that path and the solver closes the gaps within its budget; those land exactly and
+   scrub deterministically. Steps that need the paper to bend (reverse folds, 11–25%) are solved
+   as above; without collision handling their layers still pass through each other part-way
+   (3.8–6.6% of the model's size on the crane), which `tests/unit/animation/passThrough.test.ts`
+   does not cover. Measured with `tests/helpers/crossings.ts`.
 
 ### 4.4 Comparison harness (checkpoint deliverable)
 

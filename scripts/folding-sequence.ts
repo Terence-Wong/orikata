@@ -17,6 +17,7 @@
  * of a reverse fold, and changes over. Collapses placed directly take their letters from the step.
  */
 import type { Assignment } from "@/fold";
+import { rigidInBetweens } from "./rigid-in-between";
 
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
@@ -87,6 +88,15 @@ export interface Step {
   operations: Operation[];
   /** Mountain or valley for creases this step folds flat, by their midpoint in the crease pattern. */
   signs?: (midpoint: Vec2) => "M" | "V" | undefined;
+  /**
+   * Rigid states part-way through the step, each shown as a frame of its own before the step's
+   * own, found by `rigid-in-between.ts`: for a move that is not one fold about one line, like a
+   * squash or a petal fold, so the animation has the paper's real path to follow. `at` is how far
+   * the driving crease has turned, as a fraction of its whole turn in the step.
+   */
+  inBetween?: Array<{ at: number; title: string; description?: string }>;
+  /** A point in the crease pattern on the crease that drives the in-between states. */
+  driver?: Vec2;
 }
 
 export interface SequenceOutput {
@@ -247,10 +257,114 @@ export class FoldingSequence {
   step(step: Step): this {
     const firstOperation = this.operationCount + 1;
     for (const operation of step.operations) this.run(operation);
+    if (step.inBetween?.length) return this.withInBetweens(step, firstOperation - 1);
     this.steps.push({
       title: step.title,
       description: step.description,
       firstOperation,
+      lastOperation: this.operationCount,
+      name: step.name,
+      signs: step.signs,
+    });
+    return this;
+  }
+
+  /**
+   * Replaces the step's operations with its in-between states and then its end state, each a frame
+   * of its own. The operations have already cut the faces and placed them at the end; the states
+   * between come from `rigidInBetweens`, fitted face by face.
+   */
+  private withInBetweens(step: Step, before: number): this {
+    if (!step.driver) throw new Error(`${this.where()}: in-between states need a driving crease`);
+    const used = new Set(this.faces.flatMap((face) => face.polygon));
+    const ids = [...used];
+    const index = new Map(ids.map((id, i) => [id, i]));
+    const polygons = this.faces.map((face) =>
+      this.withSideVertices(face.polygon, used).map((id) => index.get(id)!),
+    );
+    const flatOf = (id: number): Vec3 => [this.points[id]![0], this.points[id]![1], 0];
+    const placeAll = (motion: (face: Face) => Motion) => {
+      const placed: Vec3[] = new Array(ids.length);
+      this.faces.forEach((face, f) => {
+        for (const v of polygons[f]!) placed[v] ??= apply(motion(face), flatOf(ids[v]!));
+      });
+      return placed;
+    };
+    const start = placeAll((face) => face.history[before]!);
+    const end = placeAll((face) => this.current(face));
+    const moving = this.faces.map((face) => !sameMotion(face.history[before]!, this.current(face)));
+
+    // The two faces either side of the driving crease: the sides of theirs it lies on.
+    const [dx, dy] = step.driver;
+    const onSide = (f: number) =>
+      polygons[f]!.some((u, i) => {
+        const v = polygons[f]![(i + 1) % polygons[f]!.length]!;
+        const [ux, uy] = this.points[ids[u]!]!;
+        const [vx, vy] = this.points[ids[v]!]!;
+        const length = Math.hypot(vx - ux, vy - uy);
+        const across = Math.abs((vx - ux) * (dy - uy) - (vy - uy) * (dx - ux)) / length;
+        const along = ((dx - ux) * (vx - ux) + (dy - uy) * (vy - uy)) / (length * length);
+        return across < 1e-9 && along > 0 && along < 1;
+      });
+    const sides = this.faces.map((_, f) => f).filter(onSide);
+    if (sides.length !== 2) {
+      throw new Error(`${this.where()}: the driving crease has ${sides.length} faces, not two`);
+    }
+
+    const fractions = step.inBetween!.map(({ at }) => at);
+    const states = rigidInBetweens({
+      flat: ids.map(flatOf),
+      faces: polygons,
+      start,
+      end,
+      moving,
+      driver: [sides[0]!, sides[1]!],
+      fractions,
+      where: `${this.where()} "${step.title}"`,
+    });
+
+    // Rewrite the step's history: each in-between state, then the end state.
+    const ends = this.faces.map((face) => this.current(face));
+    for (const face of this.faces) {
+      face.history.length = before + 1;
+      face.probes.length = before + 1;
+      face.turns.length = before + 1;
+    }
+    this.operationCount = before;
+    const record = (motionOf: (face: Face, f: number) => Motion) => {
+      this.operationCount++;
+      this.faces.forEach((face, f) => {
+        face.history.push(motionOf(face, f));
+        face.probes.push(undefined);
+        face.turns.push(0);
+      });
+    };
+    step.inBetween!.forEach((frame, k) => {
+      const state = states[k]!;
+      record((face, f) => {
+        if (!moving[f]) return face.history[before]!;
+        const [a, b, c] = widestTriangle(polygons[f]!, (v) => flatOf(ids[v]!));
+        return motionFromTriangle(
+          [
+            [flatOf(ids[a]!)[0], flatOf(ids[a]!)[1]],
+            [flatOf(ids[b]!)[0], flatOf(ids[b]!)[1]],
+            [flatOf(ids[c]!)[0], flatOf(ids[c]!)[1]],
+          ],
+          [state[a]!, state[b]!, state[c]!],
+        );
+      });
+      this.steps.push({
+        title: frame.title,
+        description: frame.description,
+        firstOperation: this.operationCount,
+        lastOperation: this.operationCount,
+      });
+    });
+    record((_, f) => ends[f]!);
+    this.steps.push({
+      title: step.title,
+      description: step.description,
+      firstOperation: this.operationCount,
       lastOperation: this.operationCount,
       name: step.name,
       signs: step.signs,
@@ -613,6 +727,28 @@ function dihedral(m1: Motion, m2: Motion, a: Vec3, b: Vec3): number {
   const along = sub(apply(m1, b), apply(m1, a));
   const u = scale(along, 1 / Math.hypot(...along));
   return (Math.atan2(dot(cross(n2, n1), u), dot(n1, n2)) * 180) / Math.PI;
+}
+
+/** Three vertices of a face spanning as much area as possible, for a well-conditioned fit. */
+function widestTriangle(
+  polygon: readonly number[],
+  at: (v: number) => Vec3,
+): [number, number, number] {
+  let best: [number, number, number] = [polygon[0]!, polygon[1]!, polygon[2]!];
+  let area = -1;
+  for (let i = 0; i < polygon.length; i++) {
+    for (let j = i + 1; j < polygon.length; j++) {
+      for (let k = j + 1; k < polygon.length; k++) {
+        const [p, q, r] = [at(polygon[i]!), at(polygon[j]!), at(polygon[k]!)];
+        const twice = Math.abs((q[0] - p[0]) * (r[1] - p[1]) - (r[0] - p[0]) * (q[1] - p[1]));
+        if (twice > area) {
+          area = twice;
+          best = [polygon[i]!, polygon[j]!, polygon[k]!];
+        }
+      }
+    }
+  }
+  return best;
 }
 
 function relative(m1: Motion, m2: Motion): Motion {

@@ -78,17 +78,23 @@ describe.each(VALID_FIXTURES)("%s lands every step without a visible jump", (nam
 
 describe("on a slow device, frames 0.1 s apart and 4 ms of solver time each", () => {
   // Settling is bounded by how much the solver has done, not by how much time has passed, so a
-  // slow device takes longer to settle but still gets there.
+  // slow device takes longer to settle but still gets there. Each iteration is taken to cost what
+  // one of the crane's does on a laptop (31 µs), so the test does not depend on how busy the
+  // machine running it is. The steps are the ones the solver works out by itself, which the paper
+  // has to bend for; plain and petal folds follow the rigid path and land exactly regardless.
   const model = load("crane");
   const size = sizeOf(model);
+  const device = () => new SolverAnimator(4, 0.031);
+  const steps = ["Reverse fold the neck", "Reverse fold the tail", "Reverse fold the head"].map(
+    (title) => {
+      const to = model.frames.findIndex((frame) => frame.title === title);
+      return [title, to - 1, to] as const;
+    },
+  );
 
-  it.each([
-    [5, 6],
-    [6, 7],
-    [12, 13],
-  ] as const)("the crane's step %i → %i still lands without a jump", (from, to) => {
+  it.each(steps)("the crane's %s still lands without a jump", (_, from, to) => {
     const out = new Float32Array(model.vertexCount * 3);
-    const animator = new SolverAnimator(4);
+    const animator = device();
     animator.init(model, out);
     animator.jumpTo(from);
     animator.beginTransition(from, to);
@@ -96,13 +102,9 @@ describe("on a slow device, frames 0.1 s apart and 4 ms of solver time each", ()
     expect(animator.lastTransition().landingDistance / size).toBeLessThan(LARGEST_JUMP);
   });
 
-  it.each([
-    [5, 6],
-    [6, 7],
-    [12, 13],
-  ] as const)("the crane's scrubber for %i → %i ends without a jump from half-way", (from, to) => {
+  it.each(steps)("the crane's scrubber for %s ends without a jump from half-way", (_, from, to) => {
     const out = new Float32Array(model.vertexCount * 3);
-    const animator = new SolverAnimator(4);
+    const animator = device();
     animator.init(model, out);
     animator.jumpTo(to);
     for (const s of [0.45, 0.98]) {

@@ -55,6 +55,17 @@ export const EXAMPLES: readonly Example[] = [
     title: "Crane",
     blurb: "The traditional orizuru: preliminary base, petal folds, reverse folds, wings spread.",
   },
+  {
+    name: "miura-map",
+    title: "Miura map fold",
+    blurb: "The fold used for maps and solar panels: eighty panels close into one flat stack.",
+  },
+  {
+    name: "road-map",
+    title: "Road map",
+    blurb:
+      "Accordion into eight, then halve three times: 64 layers, each fold through all before it.",
+  },
 ] as const;
 
 export function findExample(name: string): Example | undefined {

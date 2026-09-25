@@ -286,6 +286,39 @@ describe("crane", () => {
   });
 });
 
+describe("miura-map", () => {
+  const model = loadValid("miura-map");
+
+  it("ends with every crease folded flat: all eighty panels in one stack", () => {
+    expect(model.facesVertices).toHaveLength(80);
+    const last = model.frames[model.frames.length - 1]!;
+    model.edgesFaces.forEach((faces, e) => {
+      if (faces.length !== 2) return;
+      expect(Math.abs(last.foldAngles[e]!), `edge ${e}`).toBeCloseTo(180, 6);
+    });
+  });
+
+  it("folds in one motion: every crease moves in every step", () => {
+    const interior = model.edgesFaces.filter((faces) => faces.length === 2).length;
+    for (const frame of model.frames.slice(1)) {
+      expect(frame.newlyActive.length, `frame ${frame.index}`).toBe(interior);
+    }
+  });
+});
+
+describe("road-map", () => {
+  const model = loadValid("road-map");
+
+  it("folds 64 panels into one stack, one plain fold at a time", () => {
+    expect(model.facesVertices).toHaveLength(64);
+    const last = model.frames[model.frames.length - 1]!;
+    model.edgesFaces.forEach((faces, e) => {
+      if (faces.length !== 2) return;
+      expect(Math.abs(last.foldAngles[e]!), `edge ${e}`).toBeCloseTo(180, 6);
+    });
+  });
+});
+
 describe("invalid fixtures", () => {
   const cases: Array<[string, string, number | undefined]> = [
     ["invalid-json", "INVALID_JSON", undefined],

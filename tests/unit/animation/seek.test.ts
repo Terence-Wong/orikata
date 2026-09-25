@@ -141,8 +141,10 @@ describe("solver seek", () => {
     const animator = new SolverAnimator();
     const out = new Float32Array(model.vertexCount * 3);
     animator.init(model, out);
-    animator.jumpTo(9);
-    animator.seek(9, 10, 0.6);
+    // A reverse fold: the paper has to bend, so the solver works it out rather than the rigid path.
+    const neck = model.frames.findIndex((frame) => frame.title === "Reverse fold the neck");
+    animator.jumpTo(neck - 1);
+    animator.seek(neck - 1, neck, 0.6);
     let frames = 0;
     while (animator.step(1 / 60) !== "idle" && frames < 600) frames++;
     expect(frames).toBeGreaterThan(0);

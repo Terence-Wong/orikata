@@ -15,12 +15,10 @@ import {
   compose,
   FoldingSequence,
   foldAcross,
-  invertMotion,
   motionFromTriangle,
   turnAbout,
   type FaceInfo,
   type Layers,
-  type Motion,
   type Vec2,
   type Vec3,
 } from "./folding-sequence";
@@ -288,11 +286,64 @@ function solveMidpointHeight(rc: number, hc: number): number {
  * zero and the sheet is folded flat. H, D and L follow.
  */
 function miuraOri(): Fixture {
-  const columns = 8;
-  const rows = 6;
-  const p = 0.16;
-  const d = 0.07;
-  const q = 0.13;
+  return miura({
+    columns: 8,
+    rows: 6,
+    p: 0.16,
+    d: 0.07,
+    q: 0.13,
+    title: "Miura-ori",
+    patternTitle: "Miura tessellation",
+    patternDescription: "Straight rows and zigzagging columns, all folding as one.",
+    frames: [
+      [0.35, "Start collapsing", "The whole sheet folds at once: it has one degree of freedom."],
+      [0.7, "Keep going"],
+      [0.97, "Nearly closed", "The parallelograms stack into a compact block."],
+    ],
+  });
+}
+
+/**
+ * The Miura map fold, taken all the way: the fold used for road maps and solar panels, where
+ * pulling two corners apart opens the whole sheet at once. Ten columns by eight rows, folded
+ * completely flat at the end, so all eighty panels lie in one stack, each crease flat. A test of
+ * how deep a stack the viewer can order and draw.
+ */
+function miuraMap(): Fixture {
+  return miura({
+    columns: 10,
+    rows: 8,
+    p: 0.1,
+    d: 0.02,
+    q: 0.13,
+    title: "Miura map fold",
+    patternTitle: "Map sheet",
+    patternDescription: "A Miura pattern: slightly slanted columns make the creases fold together.",
+    frames: [
+      [0.3, "Pull the corners together", "Every crease in the sheet moves at once."],
+      [0.7, "Keep closing", "Rows stack onto rows, columns onto columns."],
+      [0.95, "Nearly closed"],
+      [1, "Folded flat", "All eighty panels lie in one stack."],
+    ],
+  });
+}
+
+interface MiuraOptions {
+  columns: number;
+  rows: number;
+  /** Width of a column, the zigzag's offset, and the height of a row, flat. */
+  p: number;
+  d: number;
+  q: number;
+  title: string;
+  patternTitle: string;
+  patternDescription: string;
+  /** Each frame: how far folded, 0 flat to 1 folded flat, then its title and description. */
+  frames: Array<[number, string, string?]>;
+}
+
+function miura(options: MiuraOptions): Fixture {
+  const { columns, rows, p, d, q } = options;
 
   const place = (s: number): Vertex[] => {
     const h = Math.sqrt(Math.max(0, p * p - s * s));
@@ -325,30 +376,92 @@ function miuraOri(): Fixture {
     }
   }
 
-  /** `fraction` runs 0 (flat) to 1 (as folded as this pattern goes). */
-  const frameAt = (fraction: number, title: string, description?: string): Frame => ({
-    title,
-    description,
-    vertices: place(p + fraction * (smallest - p)),
-  });
-
   return {
-    title: "Miura-ori",
-    patternTitle: "Miura tessellation",
-    patternDescription: "Straight rows and zigzagging columns, all folding as one.",
+    title: options.title,
+    patternTitle: options.patternTitle,
+    patternDescription: options.patternDescription,
     vertices: place(p),
     edges,
     assignments: edges.map(() => "U" as Assignment),
     faces,
-    frames: [
-      frameAt(
-        0.35,
-        "Start collapsing",
-        "The whole sheet folds at once: it has one degree of freedom.",
-      ),
-      frameAt(0.7, "Keep going"),
-      frameAt(0.97, "Nearly closed", "The parallelograms stack into a compact block."),
-    ],
+    // `fraction` runs 0 (flat) to 1 (as folded as this pattern goes).
+    frames: options.frames.map(([fraction, title, description]) => ({
+      title,
+      description,
+      vertices: place(p + fraction * (smallest - p)),
+    })),
+  };
+}
+
+/**
+ * A road map, folded the everyday way: accordion the sheet into eight panels, then fold the strip
+ * in half three times. Every step is a plain fold of everything folded so far, so each new crease
+ * runs through all the layers before it and the folds nest inside one another: 64 layers at the
+ * end, the sequential counterpart of the Miura map's all-at-once collapse.
+ */
+function roadMap(): Fixture {
+  const width = 1.6;
+  const panels = 8;
+  const panel = width / panels;
+  const all: Layers = () => true;
+
+  let sequence = new FoldingSequence([
+    [0, 0],
+    [width, 0],
+    [width, 1],
+    [0, 1],
+  ]);
+  for (let k = 1; k < panels; k++) {
+    const x = k * panel;
+    sequence = sequence.step({
+      title: k === 1 ? "Fold the first panel over" : `Accordion: fold ${k} of ${panels - 1}`,
+      description:
+        k === 1
+          ? "Pleat the map into eight panels, alternating forwards and back."
+          : k === panels - 1
+            ? "The whole map is now a strip eight panels thick."
+            : undefined,
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [x, 0],
+            [x, 1],
+          ],
+          side: [x - panel / 2, 0.5],
+          groups: [{ layers: all, angle: k % 2 === 1 ? 180 : -180 }],
+        },
+      ],
+    });
+  }
+  const halves: Array<[number, number, string, string]> = [
+    [0.5, 180, "Fold the strip in half", "Sixteen layers."],
+    [0.25, -180, "And in half again", "Thirty-two layers, each new crease through all of them."],
+    [0.125, 180, "And once more", "Sixty-four layers: small enough for a glovebox."],
+  ];
+  for (const [y, angle, title, description] of halves) {
+    sequence = sequence.step({
+      title,
+      description,
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [width - panel, y],
+            [width, y],
+          ],
+          side: [width - panel / 2, y + y / 2],
+          groups: [{ layers: all, angle }],
+        },
+      ],
+    });
+  }
+
+  return {
+    title: "Road map",
+    patternTitle: "Map sheet",
+    patternDescription: "Eight panels across, then halved three times.",
+    ...sequence.build(),
   };
 }
 
@@ -505,33 +618,6 @@ function paperAirplane(): Fixture {
   };
 }
 
-function unitVector([x, y, z]: Vec3): Vec3 {
-  const length = Math.hypot(x, y, z);
-  return [x / length, y / length, z / length];
-}
-
-/**
- * The angle, in `turnAbout`'s convention for this line and side, that turns `from` to `to`. Both
- * points must be the same distance from the line.
- */
-function signedTurn(line: readonly [Vec2, Vec2], side: Vec2, from: Vec3, to: Vec3): number {
-  // `turnAbout` by a right angle shows which way positive goes; measure against that.
-  const quarter = apply(turnAbout(line, side, 90), from);
-  const [a] = line;
-  const foot = (p: Vec3): Vec3 => {
-    const axis = unitVector([line[1][0] - a[0], line[1][1] - a[1], 0]);
-    const t = (p[0] - a[0]) * axis[0] + (p[1] - a[1]) * axis[1];
-    return [a[0] + t * axis[0], a[1] + t * axis[1], 0];
-  };
-  const base = foot(from);
-  const u: Vec3 = [from[0] - base[0], from[1] - base[1], from[2] - base[2]];
-  const v: Vec3 = [quarter[0] - base[0], quarter[1] - base[1], quarter[2] - base[2]];
-  const w: Vec3 = [to[0] - base[0], to[1] - base[1], to[2] - base[2]];
-  const along = u[0] * w[0] + u[1] * w[1] + u[2] * w[2];
-  const across = v[0] * w[0] + v[1] * w[1] + v[2] * w[2];
-  return (Math.atan2(across, along) * 180) / Math.PI;
-}
-
 /**
  * The traditional crane, from a square of half-width 1 centred on the origin, as in
  * `preliminary-base`. It collapses the same way (frames 1–3 use that fixture's closed form, stood
@@ -616,33 +702,27 @@ function crane(): Fixture {
   const leftPoint: Vec2 = [-r2 / 2, -r2 / 2];
 
   /**
-   * The petal fold, lifted `degrees` of the way. Around each K point four hinges close a loop:
-   * the base (which does not move), the petal turning up about the hinge line, the kite flap on
-   * the petal, and the layer behind the flap, hinged to the base. That loop is a spherical four-bar
-   * linkage, so it moves rigidly with one degree of freedom: given the petal's turn, the flap and
-   * the layer behind it must meet where two circles on a sphere cross. The circles cross twice;
-   * the fold is the crossing reached continuously from flat, so the linkage is followed a degree
-   * at a time. (Flat at the end, the circles only touch, so there the known flat result is used.)
-   * `front` false mirrors everything for the back of the model.
+   * The petal fold's end, flat: the lower part of the top layer turned up about the hinge through
+   * the two K points, each kite flap folded along its kite crease under it, and the layer behind
+   * each flap folded along the same line. The rigid states on the way are found by
+   * `rigid-in-between.ts` (the step's `inBetween`): around each K point the base, the petal, the
+   * flap and the layer behind it close a loop of four hinges, a spherical four-bar linkage that
+   * moves rigidly with one degree of freedom. `front` false is the back of the model.
    */
-  const petalLift = (degrees: number, front: boolean) => {
-    // Every stage of the lift is measured from the flat base before it.
+  const petalLift = (front: boolean) => {
     const from = front ? "front unfolded" : "front petal";
-    const toward = front ? 1 : -1;
-    const petal = turnAbout(hinge, bottom, toward * degrees);
+    const petal = turnAbout(hinge, bottom, front ? 180 : -180);
     const middle = front ? q4 : q2;
-    // The petal itself, by where it is in the crease pattern rather than where it has turned to:
-    // past the side of the central diamond, the line through the two K points.
+    // The petal itself, by where it is in the crease pattern: past the side of the central
+    // diamond, the line through the two K points.
     const diamond = 2 - r2;
     const petalPart = front
       ? ({ cp }: FaceInfo) => cp[0] - cp[1] > diamond
       : ({ cp }: FaceInfo) => cp[1] - cp[0] > diamond;
     const kiteRight = front ? "kite front right" : "kite back right";
     const kiteLeft = front ? "kite front left" : "kite back left";
-    const place = (
-      right: { flap: Motion; behind: Motion },
-      left: { flap: Motion; behind: Motion },
-    ) => ({
+    const flap = (kPoint: Vec2) => compose(petal, foldAcross(bottom, kPoint));
+    return {
       kind: "place" as const,
       groups: [
         {
@@ -650,74 +730,12 @@ function crane(): Fixture {
           then: petal,
           from,
         },
-        { layers: and(middle, tagged(kiteRight)), then: right.flap, from },
-        { layers: and(middle, tagged(kiteLeft)), then: left.flap, from },
-        { layers: and(q1, tagged(kiteRight)), then: right.behind, from },
-        { layers: and(q3, tagged(kiteLeft)), then: left.behind, from },
+        { layers: and(middle, tagged(kiteRight)), then: flap(kRight), from },
+        { layers: and(middle, tagged(kiteLeft)), then: flap(kLeft), from },
+        { layers: and(q1, tagged(kiteRight)), then: foldAcross(bottom, kRight), from },
+        { layers: and(q3, tagged(kiteLeft)), then: foldAcross(bottom, kLeft), from },
       ],
-    });
-    // Flat, the answer is exact: the flap is folded along its kite crease under the petal, and the
-    // layer behind lies folded along the same line.
-    if (degrees === 180) {
-      const folded = (kPoint: Vec2) => ({
-        flap: compose(petal, foldAcross(bottom, kPoint)),
-        behind: foldAcross(bottom, kPoint),
-      });
-      return place(folded(kRight), folded(kLeft));
-    }
-    const side = (kPoint: Vec2, edgePoint: Vec2) => {
-      // Before the lift, flap and layer behind lie on each other, hinged along the kite line
-      // from the bottom point to K, and meet at the edge midpoint.
-      const line = [bottom, kPoint] as const;
-      const corner: Vec3 = [edgePoint[0], edgePoint[1], 0];
-      const axis = unitVector([kPoint[0] - bottom[0], kPoint[1] - bottom[1], 0]);
-      const behind = (angle: number) => apply(turnAbout(line, edgePoint, angle), corner);
-      // Where the layer behind puts the shared corner, taken back through the petal's turn, must
-      // lie on the circle the flap can swing it round: the plane through `corner` square to the
-      // kite line.
-      const gapAt = (petalDegrees: number, angle: number) => {
-        const p = apply(
-          invertMotion(turnAbout(hinge, bottom, toward * petalDegrees)),
-          behind(angle),
-        );
-        return (p[0] - corner[0]) * axis[0] + (p[1] - corner[1]) * axis[1];
-      };
-      // Follow the linkage from flat, a degree at a time, keeping to the crossing nearest the
-      // last: the two circles cross twice, and only continuity says which crossing is the fold.
-      let angle = 0;
-      for (let turned = 1; turned <= degrees; turned++) {
-        const gap = (a: number) => gapAt(turned, a);
-        let found: number | undefined;
-        for (let reach = 0.25; reach <= 60 && found === undefined; reach += 0.25) {
-          for (const [lo, hi] of [
-            [angle, angle + reach],
-            [angle - reach, angle],
-          ] as const) {
-            if (Math.sign(gap(lo)) === Math.sign(gap(hi)) || gap(lo) === 0) continue;
-            let [a, b] = [lo, hi];
-            for (let i = 0; i < 80; i++) {
-              const mid = (a + b) / 2;
-              if (Math.sign(gap(mid)) === Math.sign(gap(a))) a = mid;
-              else b = mid;
-            }
-            found = (a + b) / 2;
-            break;
-          }
-        }
-        if (found === undefined) throw new Error(`petal fold: linkage lost at ${turned}°`);
-        angle = found;
-      }
-      const meet = behind(angle);
-      // The flap's own turn about the kite line takes its corner to where the petal's inverse puts
-      // the meeting point.
-      const target = apply(invertMotion(petal), meet);
-      const flapAngle = signedTurn(line, edgePoint, corner, target);
-      return {
-        behind: turnAbout(line, edgePoint, angle),
-        flap: compose(petal, turnAbout(line, edgePoint, flapAngle)),
-      };
     };
-    return place(side(kRight, rightPoint), side(kLeft, leftPoint));
   };
 
   /** The precreases the back's petal fold needs: its kite lines, and the hinge. */
@@ -872,26 +890,29 @@ function crane(): Fixture {
       ],
     })
     .step({
-      title: "Petal fold: lift the bottom corner",
-      description:
-        "Lift the top layer's bottom corner up along the horizontal crease. The sides swing in along the kite creases.",
-      operations: [petalLift(90, true)],
-    })
-    .step({
       name: "front petal",
+      inBetween: [
+        { at: 0.5, title: "Petal fold: lift the bottom corner" },
+        { at: 150 / 180, title: "Petal fold: bring the sides in" },
+      ],
+      driver: [(3 * (2 - r2)) / 4, -(2 - r2) / 4],
       title: "Petal fold: flatten",
       description: "Press the sides in flat under the petal.",
-      operations: [petalLift(180, true)],
+      operations: [petalLift(true)],
     })
     .step({
-      title: "Petal fold the back: lift",
-      description: "Turn over and repeat: crease the kite and its top, then lift.",
-      operations: [...backPrecreases, petalLift(90, false)],
-    })
-    .step({
+      inBetween: [
+        {
+          at: 0.5,
+          title: "Petal fold the back: lift",
+          description: "Turn over and repeat: crease the kite and its top, then lift.",
+        },
+        { at: 150 / 180, title: "Petal fold the back: bring the sides in" },
+      ],
+      driver: [-(2 - r2) / 4, (3 * (2 - r2)) / 4],
       title: "Petal fold the back: flatten",
       description: "This is the bird base.",
-      operations: [petalLift(180, false)],
+      operations: [...backPrecreases, petalLift(false)],
     })
     .step({
       title: "Reverse fold the neck",
@@ -956,6 +977,8 @@ const FIXTURES: [string, () => Fixture][] = [
   ["accordion-pleat", () => withMeasuredAssignments(accordionPleat())],
   ["waterbomb-base", () => withMeasuredAssignments(waterbombBase())],
   ["miura-ori", () => withMeasuredAssignments(miuraOri())],
+  ["miura-map", () => withMeasuredAssignments(miuraMap())],
+  ["road-map", roadMap],
   ["paper-airplane", paperAirplane],
   ["crane", crane],
 ];

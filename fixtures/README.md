@@ -143,9 +143,9 @@ Expected newly-active edges: frame 1 → {8..15}; frame 2 → {8..15}; frame 3 �
 
 ## Generated fixtures
 
-Five fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
-(`pnpm fixtures`, or `pnpm fixtures crane` for one). Three come from the closed forms below; the
-paper airplane and crane are written as folding sequences. The derivations are here and the same consistency
+Seven fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
+(`pnpm fixtures`, or `pnpm fixtures crane` for one). Four come from the closed forms below; the
+paper airplane, crane and road map are written as folding sequences. The derivations are here and the same consistency
 tests apply, so a mistake in a formula fails the suite rather than slipping through — which is how
 the waterbomb's quadratic and the Miura's parameterisation were both caught while writing them.
 Their crease assignments are measured from the first folded frame rather than asserted, because
@@ -192,7 +192,15 @@ which leave one free parameter. S runs from p (flat) down to p·d/√(d² + q²)
 and the sheet is folded flat; H, D and L follow from the three equations. The frames are at 35%,
 70% and 97% of that range.
 
-### Folding sequences: `paper-airplane` and `crane`
+### `valid/miura-map.fold` — 5 frames
+
+The same construction with p = 0.1, d = 0.02, q = 0.13 over ten columns and eight rows, taken all
+the way: the frames are at 30%, 70%, 95% and 100%, where L = 0 and every crease is folded flat, so
+all eighty panels lie in one stack. It is there to test how deep a stack the viewer orders and
+draws: 3160 overlapping pairs, past the layer search's limit, so the stack is ordered by the
+creases' own constraints and the fallback.
+
+### Folding sequences: `paper-airplane`, `crane` and `road-map`
 
 Neither model has a closed form, so `scripts/folding-sequence.ts` builds them the way a diagram
 reads: each step names a line in the folded model and the layers that turn about it. The sheet is
@@ -213,8 +221,23 @@ Two things are checked before a file is written, and the usual consistency tests
   crease whose two sides both turn, opposite ways, is the spine of a reverse fold and changes over.
   A collapse placed directly (the crane's first three frames and its petal folds) takes its letters
   from the partial angles it passes through, which is one reason those steps have a half-way
-  frame. The Maekawa test (|M − V| = 2 at every flat-folded
-  vertex) is the check on all of this.
+  frame. The Maekawa test (|M − V| = 2 at every flat-folded vertex) is the check on all of this.
+
+A move that is not one fold about one line, like a squash or a petal fold, gets its in-between
+frames from `scripts/rigid-in-between.ts` (a step's `inBetween`). Given the state before and after,
+which faces move, and one crease that drives the motion, it walks from the start in small
+increments, solving by Levenberg–Marquardt to 10⁻¹² for positions where every face is exactly rigid
+and the driving crease has turned its share. Each solution starts from the last, so the path is the
+one reached continuously from the start; it throws if no rigid state exists part-way or the path
+does not arrive at the end given. On the crane's petal folds it reproduces the four-bar linkage
+solved by hand to 10⁻¹².
+
+### `valid/road-map.fold` — 11 frames
+
+A 1.6 × 1 sheet accordion-folded into eight panels of 0.2, one crease at a time and alternating
+forwards and back, then the strip folded in half three times (at y = 0.5, 0.25 and 0.125). Each
+fold carries everything folded before it, so every new crease runs through all the layers and the
+folds nest: 64 faces in one stack at the end, 2016 overlapping pairs, ordered by the layer search.
 
 ### `valid/paper-airplane.fold` — 8 frames
 
@@ -224,7 +247,7 @@ centre (lines from the nose at 22.5°, meeting the long edges at y = √2 − ½
 behind; fold one wing forward and one behind along x = ±0.13, parallel to the keel. The last frame
 opens both wings a quarter-turn, square to the body, so it is the only frame not folded flat.
 
-### `valid/crane.fold` — 15 frames
+### `valid/crane.fold` — 17 frames
 
 The traditional crane from a square of half-width 1, as `preliminary-base`. Frames 1–3 are that
 fixture's closed-form collapse (partial, corners meeting, flat), turned by (x, y, z) → (x, z, −y) so
@@ -238,7 +261,7 @@ the bottom (0, −√2). Coordinates below are in that upright frame.
   paper you fold the top down and back to make it, but the front flaps are joined along the spine to
   the back ones above that line, so the top cannot turn over without the back layers — a rigid
   model tears (the builder caught this). Real paper bends there for a moment; here it is a crease.
-- **Petal folds**, in two frames each: lifted half-way, then flat. The lower part of the front layer
+- **Petal folds**, in three frames each: lifted half-way, lifted to 150°, then flat. The lower part of the front layer
   turns up about the hinge y = −(√2 − 1). Around each K point four hinges close a loop: the base,
   which stays put; the petal; the kite flap on the petal; and the layer behind the flap, hinged to
   the base along the same kite line. That loop is a spherical four-bar linkage, rigid with one
@@ -256,7 +279,10 @@ the bottom (0, −√2). Coordinates below are in that upright frame.
   every crease interpolates independently, the solver has no rigid path to follow, and it settled
   60% of the model's size away from the stored shape, which the landing blend then snapped into
   place. A rigid variant that kept the kite flaps folded had a path but left a crease the wrong way
-  round, which the Maekawa test caught.
+  round, which the Maekawa test caught. The 150° frame is there for the same reason: between 90°
+  and flat the layer behind the flap swings its last 138°, so fold angles interpolated straight
+  across left the faces 12% of the model apart and paper passed through paper by 6%. With it the
+  gaps are under 5% and the animator can follow the rigid path (see the plan, 4.3 step 6).
 
 - **Neck and tail.** Each lower flap (the corners (1, 1) and (−1, −1)) is inside-reverse-folded
   along a line through (0, −(√2 − 1)) at 15° below horizontal, which stands it at 60°. The flap's

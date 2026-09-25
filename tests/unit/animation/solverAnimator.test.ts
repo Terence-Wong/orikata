@@ -20,6 +20,11 @@ function setUp(name: string) {
   return { model, animator, out };
 }
 
+/** The crane's first reverse fold, a step the paper has to bend for. */
+function reverseFold(model: ResolvedModel): number {
+  return model.frames.findIndex((frame) => frame.title === "Reverse fold the neck");
+}
+
 /** Runs the animator at 60 fps until it reports idle. Returns every state it passed through. */
 function runTransition(
   animator: SolverAnimator,
@@ -114,9 +119,11 @@ describe("SolverAnimator", () => {
   });
 
   it("passes through tweening, settling and landing before going idle", () => {
-    const { animator } = setUp("preliminary-base");
-    animator.jumpTo(0);
-    const states = runTransition(animator, 0, 1);
+    // A reverse fold: the paper has to bend, so the solver works it out (see below).
+    const { animator, model } = setUp("crane");
+    const neck = reverseFold(model);
+    animator.jumpTo(neck - 1);
+    const states = runTransition(animator, neck - 1, neck);
     expect(states[0]).toBe("running");
     expect(states).toContain("landing");
     expect(states.at(-1)).toBe("idle");
@@ -228,31 +235,52 @@ describe("SolverAnimator", () => {
     expect(maxDeviation(out, model, 1)).toBeLessThan(1e-5);
   });
 
-  it.each([
-    ["book-fold", 0, 1],
-    ["preliminary-base", 2, 3],
-  ])("reports what %s %i→%i cost the solver", (name, from, to) => {
-    const { animator } = setUp(name);
-    animator.jumpTo(from);
-    runTransition(animator, from, to);
-    const diagnostics = animator.lastTransition();
-    // The tween ends with the creases close to their targets, the settle closes the gap, and the
-    // handover then has almost nothing left to move.
-    expect(diagnostics.residualAtTweenEndDeg).toBeGreaterThan(0);
-    expect(diagnostics.residualAtTweenEndDeg).toBeLessThan(10);
-    expect(diagnostics.residualAtLandingDeg).toBeLessThanOrEqual(diagnostics.residualAtTweenEndDeg);
-    expect(diagnostics.settleFrames).toBeGreaterThan(0);
-    expect(diagnostics.landingDistance).toBeLessThan(0.05);
-  });
+  // Steps the solver works out by itself are the ones the paper has to bend for, like a reverse
+  // fold. Plain folds are played as rigid folding and nearly rigid ones, like a petal fold, follow
+  // the rigid path; neither leaves the solver anything to report (see below).
+  it.each(["Reverse fold the neck", "Reverse fold the head"])(
+    "reports what the crane's %s cost the solver",
+    (title) => {
+      const { animator, model } = setUp("crane");
+      const to = model.frames.findIndex((frame) => frame.title === title);
+      const from = to - 1;
+      animator.jumpTo(from);
+      runTransition(animator, from, to);
+      const diagnostics = animator.lastTransition();
+      // A reverse fold's spine is still turning over when the tween ends; the settle closes the
+      // gap, and the handover then has little left to move.
+      expect(diagnostics.residualAtTweenEndDeg).toBeGreaterThan(0);
+      expect(diagnostics.residualAtLandingDeg).toBeLessThanOrEqual(
+        diagnostics.residualAtTweenEndDeg,
+      );
+      expect(diagnostics.settleFrames).toBeGreaterThan(0);
+      expect(diagnostics.landingDistance).toBeLessThan(0.05);
+    },
+  );
 
   it("starts each transition's diagnostics afresh", () => {
-    const { animator } = setUp("book-fold-90");
-    animator.jumpTo(0);
-    runTransition(animator, 0, 1);
+    const { animator, model } = setUp("crane");
+    const neck = reverseFold(model);
+    animator.jumpTo(neck - 1);
+    runTransition(animator, neck - 1, neck);
     const first = animator.lastTransition().settleFrames;
-    animator.beginTransition(1, 2);
+    animator.beginTransition(neck, neck + 1);
     expect(animator.lastTransition().settleFrames).toBe(0);
     expect(first).toBeGreaterThan(0);
+  });
+
+  it("plays a plain fold as rigid folding, with nothing to settle or blend", () => {
+    const { animator, out, model } = setUp("book-fold");
+    animator.jumpTo(0);
+    const states = runTransition(animator, 0, 1);
+    expect(states.at(-1)).toBe("idle");
+    expect(animator.lastTransition()).toEqual({
+      residualAtTweenEndDeg: 0,
+      residualAtLandingDeg: 0,
+      settleFrames: 0,
+      landingDistance: 0,
+    });
+    expect(maxDeviation(out, model, 1)).toBeLessThan(1e-6);
   });
 
   it("still lands exactly when the frame budget only allows one iteration", () => {

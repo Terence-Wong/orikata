@@ -5,6 +5,7 @@ import { planSubsteps, SOLVER_BUDGET_MS } from "./budget";
 import { applyRotation, applyTransform, kabsch } from "./kabsch";
 import { buildSolverModel, denormalise, frameTargets, normalise, type SolverModel } from "./model";
 import { Solver } from "./solver";
+import { RigidPath } from "../rigidPath";
 
 /**
  * Once the tween is over, keep solving for at most this many iterations before landing: a second's
@@ -44,7 +45,13 @@ export const SCRUB_TOLERANCE = (0.1 * Math.PI) / 180;
 /** Good enough to stop settling early, in radians (0.5°). */
 export const SETTLE_TOLERANCE = (0.5 * Math.PI) / 180;
 
-type Phase = "idle" | "tweening" | "settling" | "landing" | "scrubbing";
+type Phase = "idle" | "tweening" | "settling" | "landing" | "scrubbing" | "rigid" | "guided";
+
+/**
+ * Iterations the solver gets to close up the rigid path when the scrubber lands part-way through a
+ * nearly rigid step. Always the same number, so the same slider position gives the same shape.
+ */
+export const GUIDED_SCRUB_SUBSTEPS = 300;
 
 /** What the solver's state is currently a solution of: a stored frame, or a point in a step. */
 type Standing = { frame: number } | { from: number; to: number } | null;
@@ -66,12 +73,23 @@ export interface TransitionDiagnostics {
  * constraint solver track it, warm-started from the current state. The solved shape is re-seated
  * onto the pose the author intended, then blended onto their stored geometry so every step lands
  * exactly where they put it.
+ *
+ * A step the paper can make rigidly (see `RigidPath`), which is most plain folds, is not solved at
+ * all: it is played exactly as rigid folding, so a stack of layers turns as one block and nothing
+ * passes through anything. The solver is for the steps that need the paper to bend.
  */
 export class SolverAnimator implements FoldAnimator {
   positions: Float32Array = new Float32Array(0);
 
-  /** `budgetMs` is how much of each rendered frame the solver may use. */
-  constructor(private readonly budgetMs: number = SOLVER_BUDGET_MS) {}
+  /**
+   * `budgetMs` is how much of each rendered frame the solver may use. `substepMs` fixes what one
+   * iteration is taken to cost instead of timing it, so a test can stand in for a given device
+   * without depending on how busy the machine running it is.
+   */
+  constructor(
+    private readonly budgetMs: number = SOLVER_BUDGET_MS,
+    private readonly substepMs?: number,
+  ) {}
 
   private model: ResolvedModel | null = null;
   private solverModel: SolverModel | null = null;
@@ -100,6 +118,10 @@ export class SolverAnimator implements FoldAnimator {
   private scrubbed = 0;
   private scrubSubsteps = 0;
   private settleSubsteps = 0;
+  private rigidPath: RigidPath | null = null;
+  /** The rigid path's positions, in model coordinates. */
+  private rigidCoords: Float64Array = new Float64Array(0);
+  private rigidProgress = 0;
 
   init(model: ResolvedModel, out: Float32Array): void {
     this.positions = out;
@@ -115,6 +137,8 @@ export class SolverAnimator implements FoldAnimator {
     this.landingStart = new Float64Array(model.vertexCount * 3);
     this.poseFrom = new Float64Array(model.vertexCount * 3);
     this.anglesFrom = new Float64Array(solverModel.hinges.length);
+    this.rigidPath = new RigidPath(model);
+    this.rigidCoords = new Float64Array(model.vertexCount * 3);
   }
 
   jumpTo(frame: number): void {
@@ -130,6 +154,23 @@ export class SolverAnimator implements FoldAnimator {
 
   beginTransition(from: number, to: number): void {
     if (!this.solver || !this.frames[from] || !this.frames[to]) return;
+    // Interrupting a rigid step: hand its state to the solver so the next one carries on from it.
+    // (A guided step's solver state is already the live one.)
+    if (this.phase === "rigid") this.syncSolver(this.fromFrame, this.toFrame, this.rigidProgress);
+
+    const standing = this.standing;
+    const atStart = standing !== null && "frame" in standing && standing.frame === from;
+    if (atStart && this.rigidPath!.isNearlyRigid(from, to)) {
+      this.fromFrame = from;
+      this.toFrame = to;
+      this.elapsed = 0;
+      this.rigidProgress = 0;
+      this.diagnostics = emptyDiagnostics();
+      this.standing = null;
+      this.phase = this.isRigid(from, to) ? "rigid" : "guided";
+      return;
+    }
+
     // Warm start: the tween begins at the live state, not at frame `from`, so interrupting a step
     // part-way through carries on from where it had reached instead of snapping back.
     this.poseFrom.set(this.solver.positions);
@@ -167,6 +208,22 @@ export class SolverAnimator implements FoldAnimator {
     // Land exactly on a stored frame at either end, so scrubbing to a step matches stepping to it.
     if (s === 0 || s === 1) {
       this.jumpTo(s === 0 ? from : to);
+      return;
+    }
+
+    // A rigid step is placed exactly: nothing to solve, nothing to settle. A nearly rigid one is
+    // placed on the rigid path and closed up by the solver, always with the same effort.
+    if (this.rigidPath!.isNearlyRigid(from, to)) {
+      this.syncSolver(from, to, s);
+      if (this.isRigid(from, to)) {
+        this.writeModel(this.rigidCoords);
+      } else {
+        for (let i = 0; i < GUIDED_SCRUB_SUBSTEPS; i++) solver.substep();
+        this.seatOnRigidPath();
+        this.write(solver.positions);
+      }
+      this.standing = { from, to };
+      this.phase = "idle";
       return;
     }
 
@@ -225,6 +282,27 @@ export class SolverAnimator implements FoldAnimator {
     }
 
     if (this.phase === "landing") return this.stepLanding(dtSeconds);
+
+    if (this.phase === "rigid" || this.phase === "guided") {
+      this.elapsed += dtSeconds;
+      if (this.elapsed >= TRANSITION_SECONDS) {
+        this.jumpTo(this.toFrame);
+        return "idle";
+      }
+      this.rigidProgress = easeInOutCubic(this.elapsed / TRANSITION_SECONDS);
+      if (this.phase === "rigid") {
+        this.rigidPath!.place(this.fromFrame, this.toFrame, this.rigidProgress, this.rigidCoords);
+        this.writeModel(this.rigidCoords);
+      } else {
+        // Start each frame from the rigid path, which keeps clear of paper passing through paper,
+        // and let the solver close the small gaps it leaves between faces.
+        this.syncSolver(this.fromFrame, this.toFrame, this.rigidProgress);
+        this.runSubsteps(dtSeconds);
+        this.seatOnRigidPath();
+        this.write(solver.positions);
+      }
+      return "running";
+    }
 
     if (this.phase === "tweening") {
       this.elapsed += dtSeconds;
@@ -289,7 +367,47 @@ export class SolverAnimator implements FoldAnimator {
     this.solver = null;
     this.frames = [];
     this.frameAngles = [];
+    this.rigidPath = null;
     this.phase = "idle";
+  }
+
+  private isRigid(from: number, to: number): boolean {
+    return this.rigidPath?.isRigid(from, to) ?? false;
+  }
+
+  /**
+   * Puts the solver where the rigid path has the paper, `s` of the way through the step, so a
+   * step it solves next starts from what is on screen.
+   */
+  private syncSolver(from: number, to: number, s: number): void {
+    const solver = this.solver;
+    const solverModel = this.solverModel;
+    if (!solver || !solverModel) return;
+    this.rigidPath!.place(from, to, s, this.rigidCoords);
+    const anglesFrom = this.frameAngles[from]!;
+    const anglesTo = this.frameAngles[to]!;
+    for (let h = 0; h < solver.targets.length; h++) {
+      solver.targets[h] = anglesFrom[h]! + s * (anglesTo[h]! - anglesFrom[h]!);
+    }
+    solver.setPositions(normalise(this.rigidCoords, solverModel.scale, solverModel.offset));
+  }
+
+  /**
+   * Removes any drift of the whole model the solver introduced, by fitting its shape onto the
+   * rigid path's (left in `rigidCoords` by `syncSolver`).
+   */
+  private seatOnRigidPath(): void {
+    const solver = this.solver!;
+    const solverModel = this.solverModel!;
+    const reference = normalise(this.rigidCoords, solverModel.scale, solverModel.offset);
+    const transform = kabsch(solver.positions, reference);
+    applyTransform(transform, solver.positions);
+    applyRotation(transform.rotation, solver.velocities);
+  }
+
+  /** Writes positions already in model coordinates. */
+  private writeModel(coords: Float64Array): void {
+    for (let i = 0; i < coords.length; i++) this.positions[i] = coords[i]!;
   }
 
   private stepLanding(dtSeconds: number): TransitionState {
@@ -320,9 +438,10 @@ export class SolverAnimator implements FoldAnimator {
    */
   private runSubsteps(dtSeconds: number): number {
     const solver = this.solver!;
-    const count = planSubsteps(dtSeconds, this.msPerSubstep, this.budgetMs);
+    const count = planSubsteps(dtSeconds, this.substepMs ?? this.msPerSubstep, this.budgetMs);
     const started = performance.now();
     for (let i = 0; i < count; i++) solver.substep();
+    if (this.substepMs !== undefined) return count;
     const each = (performance.now() - started) / count;
     // Smoothed, so one slow frame does not starve the next.
     this.msPerSubstep = this.msPerSubstep === 0 ? each : this.msPerSubstep * 0.8 + each * 0.2;
