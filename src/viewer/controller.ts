@@ -17,6 +17,8 @@ export interface ViewerState {
 
 type Listener = () => void;
 
+type Point = [number, number, number];
+
 /**
  * Framework-free core of the viewer: owns the frame sequence, the animator and the positions
  * buffer the renderer draws. React subscribes to it; the render loop calls `tick`.
@@ -32,6 +34,8 @@ export class ViewerController {
   private settling = false;
   /** The two frames the paper is between, while a step plays or is scrubbed. */
   private between: [from: number, to: number] | null = null;
+  /** The middle of the box around each frame, which the view turns about. */
+  private readonly centres: Point[];
 
   constructor(
     private readonly model: ResolvedModel,
@@ -46,6 +50,7 @@ export class ViewerController {
       activeEdges: [],
       creasePanelOpen: false,
     };
+    this.centres = model.frames.map((frame) => boxCentre(frame.coords));
     this.animator.init(model, this.positions);
     this.animator.jumpTo(0);
   }
@@ -71,6 +76,20 @@ export class ViewerController {
     if (!this.between) return this.state.frameIndex;
     const [from, to] = this.between;
     return this.distanceTo(from) < this.distanceTo(to) ? from : to;
+  }
+
+  /**
+   * The point the view should turn about: the middle of the frame being shown, or part way between
+   * two frames while a step is scrubbed. A folded model can end up far from the middle of the
+   * sheet it started as, and turning about that would swing it round off to one side. When a step
+   * plays this jumps straight to where it ends; the scene eases the view there.
+   */
+  viewCentre(): Point {
+    const { frameIndex, stepProgress } = this.state;
+    const to = this.centres[frameIndex]!;
+    if (stepProgress === 1 || frameIndex === 0) return to;
+    const from = this.centres[frameIndex - 1]!;
+    return [0, 1, 2].map((k) => from[k]! + stepProgress * (to[k]! - from[k]!)) as Point;
   }
 
   private distanceTo(frame: number): number {
@@ -167,4 +186,15 @@ export class ViewerController {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
+}
+
+function boxCentre(coords: ArrayLike<number>): Point {
+  const low: Point = [Infinity, Infinity, Infinity];
+  const high: Point = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < coords.length; i++) {
+    const k = i % 3;
+    low[k] = Math.min(low[k]!, coords[i]!);
+    high[k] = Math.max(high[k]!, coords[i]!);
+  }
+  return [(low[0] + high[0]) / 2, (low[1] + high[1]) / 2, (low[2] + high[2]) / 2];
 }

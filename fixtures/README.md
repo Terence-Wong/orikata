@@ -143,9 +143,9 @@ Expected newly-active edges: frame 1 → {8..15}; frame 2 → {8..15}; frame 3 �
 
 ## Generated fixtures
 
-Seven fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
+Nine fixtures have too many coordinates to type out, so `scripts/build-fixtures.ts` writes them
 (`pnpm fixtures`, or `pnpm fixtures crane` for one). Four come from the closed forms below; the
-paper airplane, crane and road map are written as folding sequences. The derivations are here and the same consistency
+paper airplane, crane, road map, samurai helmet and masu box are written as folding sequences. The derivations are here and the same consistency
 tests apply, so a mistake in a formula fails the suite rather than slipping through — which is how
 the waterbomb's quadratic and the Miura's parameterisation were both caught while writing them.
 Their crease assignments are measured from the first folded frame rather than asserted, because
@@ -200,7 +200,7 @@ all eighty panels lie in one stack. It is there to test how deep a stack the vie
 draws: 3160 overlapping pairs, past the layer search's limit, so the stack is ordered by the
 creases' own constraints and the fallback.
 
-### Folding sequences: `paper-airplane`, `crane` and `road-map`
+### Folding sequences: `paper-airplane`, `crane`, `road-map`, `samurai-helmet` and `masu-box`
 
 Neither model has a closed form, so `scripts/folding-sequence.ts` builds them the way a diagram
 reads: each step names a line in the folded model and the layers that turn about it. The sheet is
@@ -230,7 +230,9 @@ increments, solving by Levenberg–Marquardt to 10⁻¹² for positions where ev
 and the driving crease has turned its share. Each solution starts from the last, so the path is the
 one reached continuously from the start; it throws if no rigid state exists part-way or the path
 does not arrive at the end given. On the crane's petal folds it reproduces the four-bar linkage
-solved by hand to 10⁻¹².
+solved by hand to 10⁻¹². A crease the step leaves at the same angle at both ends is held at that
+angle on the way, as paper does; without that, a flap that only rides along, like the masu box's
+tip standing up with its end wall, hinges freely and the solve leaves it anywhere.
 
 ### `valid/road-map.fold` — 11 frames
 
@@ -295,6 +297,58 @@ the bottom (0, −√2). Coordinates below are in that upright frame.
 The legs are not narrowed before the reverse folds. That fold runs from the lower flap up under the
 petal, so on a rigid sheet it has to take the petal's edge with it, which the paper model does not
 do; leaving it out gives a crane with a broader neck and tail.
+
+### `valid/samurai-helmet.fold` — 8 frames
+
+The traditional kabuto from a square of side 2 standing on a corner, corners at (0, ±a) and
+(±a, 0) with a = √2, coloured side down. Every step is a plain fold, most of them of the front
+layers only.
+
+- **Triangle.** The top corner comes down to the bottom along y = 0, a valley, so the top half is
+  the front layer from here on.
+- **Square.** The left and right corners come down to (0, −a) along y = ±x: two flaps, both layers
+  each, in front of a square with corners (0, 0), (±a/2, −a/2) and (0, −a).
+- **Points up.** The flaps' lower halves fold up about y = −a/2, their points to (0, 0).
+- **Horns.** Only the layers just folded up turn out, about a line from (0, −a/2) at 22.5° from
+  upright, so each point swings 45° out and lands at (±½, −(a − 1)/2), beyond the square's upper
+  sides. The layers under them cannot come: they are joined to the square along its sides.
+- **Brim.** The front layer of the bottom triangle folds up at y = −3a/4, its point to (0, −a/2),
+  then again at y = −a/2. The band it makes narrows from a/2 to a/4 either side of the middle,
+  exactly the width of the square at those heights, over the base of the horns.
+- **Back.** The back layer's point folds up behind about y = −a/2.
+
+### `valid/masu-box.fold` — 16 frames
+
+The traditional masu from a square of side 2√2 standing on a corner, corners at (0, ±2) and
+(±2, 0). Folding the corners to the centre leaves the square [−1, 1]², and the box is its middle
+half: floor [−½, ½]², walls ½ high, all four walls two layers thick.
+
+- **Blintz, then the creases.** The four corners fold to the centre along x = ±1 and y = ±1. The
+  top and bottom edges fold to the centre and back, then the sides, creasing x = ±½ and y = ±½
+  through every layer. Creased with the corner flaps down, the lines run on straight into them
+  when they are unfolded: y = 1.5 across the top flap and x = ±½ at its sides, and likewise for
+  the others. The top and bottom corners are unfolded, and the four corner squares [½, 1]² (and
+  mirrors) are creased along their diagonals.
+- **Sides.** Everything beyond x = ±½ stands up a quarter-turn: the side walls, with their corner
+  flaps lining them and their tips on the floor, and the corner squares and the top and bottom
+  flaps' ears standing with them.
+- **Ends.** The end wall [−½, ½] × [½, 1] rises a quarter-turn about y = ½, its flap standing on
+  up above it. Each corner square splits along its diagonal into A, hinged on the end wall at
+  x = ½, and B, hinged on the side wall at y = ½, which fold flat against the inside of the end
+  wall: A at (x, y) → (1 − x, ½, y − ½), B at (x, y) → (1 − y, ½, x − ½), meeting along the
+  diagonal. The side's corner flap lies on B and goes with it. The ear beside the end's flap is
+  joined to A along y = 1 and stays in line with it. Around the corner vertex (½, ½) the floor,
+  side wall, B, A and end wall make a five-crease vertex; with the side wall standing, it moves
+  with one degree of freedom, and `rigid-in-between.ts` finds the path (two in-between frames).
+- **Flap over.** The flap turns over the top of the wall and down its inside, (x, y) →
+  (x, ½, 1.5 − y), its point bending at y = 1.5 onto the floor at (x, 2 − y, 0), and its ears fold
+  over the corner halves: (x, y) → (1 − x, ½, 1.5 − y). Over the wall the flap is a valley and the
+  ears a mountain; a placed move has no nudge to read that from, so the step says it.
+
+On the wall's inside the layers run end wall, A, B, the side's corner flap, ear, end flap, and at
+the top edge the three folds there nest. On the floor, the four flap points lie on top of the
+floor with nothing folded flat between them: what says so is the bend at each wall's foot, where
+both layers of the wall turn the same corner (see the plan, section 9).
 
 ## `invalid/` — one file per validation rule
 

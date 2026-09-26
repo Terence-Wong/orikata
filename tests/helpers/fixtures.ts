@@ -15,6 +15,8 @@ export const VALID_FIXTURES = [
   "crane",
   "miura-map",
   "road-map",
+  "samurai-helmet",
+  "masu-box",
 ] as const;
 export type ValidFixture = (typeof VALID_FIXTURES)[number];
 

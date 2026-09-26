@@ -319,6 +319,72 @@ describe("road-map", () => {
   });
 });
 
+/** Whether every crease of a frame is open or folded flat. */
+function flat(model: ResolvedModel, index: number): boolean {
+  return model.frames[index]!.foldAngles.every(
+    (theta) => Number.isNaN(theta) || Math.abs(theta) < 1e-4 || Math.abs(theta) > 179.9999,
+  );
+}
+
+describe("samurai-helmet", () => {
+  const model = loadValid("samurai-helmet");
+
+  it("folds flat at every step", () => {
+    for (const frame of model.frames)
+      expect(flat(model, frame.index), `frame ${frame.index}`).toBe(true);
+  });
+
+  it("turns its horns out past the square they were folded from", () => {
+    // After the corners come down, the model is the square with corners (0, 0), (±a/2, −a/2) and
+    // (0, −a); the horns stick out beyond its upper sides.
+    const a = Math.SQRT2;
+    const last = model.frames.at(-1)!.coords;
+    let outside = 0;
+    for (let v = 0; v < model.vertexCount; v++) {
+      const [x, y] = [last[3 * v]!, last[3 * v + 1]!];
+      if (Math.abs(x) > a / 2 - Math.abs(y + a / 2) + 1e-9) outside++;
+    }
+    expect(outside).toBe(2);
+  });
+});
+
+describe("masu-box", () => {
+  const model = loadValid("masu-box");
+
+  it("lies flat until the sides stand up", () => {
+    const standUp = model.frames.findIndex((frame) => frame.title === "Stand the sides up");
+    for (let i = 0; i < standUp; i++) expect(flat(model, i), `frame ${i}`).toBe(true);
+    expect(flat(model, standUp)).toBe(false);
+  });
+
+  it("ends as a box: a square floor, walls half as high standing square to it", () => {
+    const last = model.frames.at(-1)!;
+    const low = [Infinity, Infinity, Infinity];
+    const high = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < last.coords.length; i++) {
+      low[i % 3] = Math.min(low[i % 3]!, last.coords[i]!);
+      high[i % 3] = Math.max(high[i % 3]!, last.coords[i]!);
+    }
+    [-0.5, -0.5, 0].forEach((value, k) => expect(low[k]).toBeCloseTo(value, 9));
+    [0.5, 0.5, 0.5].forEach((value, k) => expect(high[k]).toBeCloseTo(value, 9));
+    // Every face lies in the floor or one of the four walls.
+    const planes = new Set<string>();
+    model.facesVertices.forEach((_, f) => {
+      const points = facePoints(model, last.index, f);
+      for (const [k, sides] of [
+        [0, [-0.5, 0.5]],
+        [1, [-0.5, 0.5]],
+        [2, [0]],
+      ] as const) {
+        for (const side of sides) {
+          if (points.every((p) => Math.abs(p[k] - side) < 1e-9)) planes.add(`${k}:${side}`);
+        }
+      }
+    });
+    expect([...planes].sort()).toEqual(["0:-0.5", "0:0.5", "1:-0.5", "1:0.5", "2:0"]);
+  });
+});
+
 describe("invalid fixtures", () => {
   const cases: Array<[string, string, number | undefined]> = [
     ["invalid-json", "INVALID_JSON", undefined],

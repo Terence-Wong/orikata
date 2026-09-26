@@ -86,6 +86,124 @@ describe("faceLayers", () => {
     expectNoTiedOverlaps(model(name), 2);
   });
 
+  it.each(VALID_FIXTURES)(
+    "finds an order the folding rules allow for every flat stack of %s",
+    (name) => {
+      // A stack the rules cannot order is paper that could not lie that way: a flap through a
+      // fold, or two folds interleaved. The viewer still draws it, from a guess; a fixture must
+      // never need that.
+      const m = model(name);
+      for (const frame of m.frames) {
+        const report = { guessed: 0 };
+        faceLayers(m, frame.index, report);
+        expect(report.guessed, `frame ${frame.index}`).toBe(0);
+      }
+    },
+  );
+
+  it.each(VALID_FIXTURES)(
+    "keeps a face a flat fold's line runs through out from between the fold's faces in %s",
+    (name) => {
+      // Taco–tortilla: paper lying across a fold's line cannot be inside the fold, or the fold
+      // would have to pass through it. Checked here from the geometry, independently of the
+      // rules' implementation.
+      const m = model(name);
+      for (const frame of m.frames) {
+        const coords = frame.coords;
+        const layers = faceLayers(m, frame.index);
+        const points = (f: number) => m.facesVertices[f]!.map((v) => vertex(coords, v));
+        const size = Math.max(...Array.from(coords, Math.abs), 1);
+        const inside = (p: Vec3, f: number, n: Vec3) => {
+          const polygon = points(f);
+          if (Math.abs(dot(sub(p, polygon[0]!), n)) > 1e-7 * size) return false;
+          const turn = polygon.map((a, i) => {
+            const b = polygon[(i + 1) % polygon.length]!;
+            const edge = sub(b, a);
+            return dot(cross(edge, sub(p, a)), n) / Math.hypot(...edge);
+          });
+          return turn.every((t) => t > 1e-6 * size) || turn.every((t) => t < -1e-6 * size);
+        };
+        m.edgesFaces.forEach((faces, e) => {
+          if (faces.length !== 2 || Math.abs(frame.foldAngles[e]!) < 179.999) return;
+          const [f1, f2] = faces as [number, number];
+          const n = normal(m, frame.index, f1);
+          const [u, v] = m.edgesVertices[e]!;
+          const [a, b] = [vertex(coords, u), vertex(coords, v)];
+          const h1 = height(m, frame.index, f1, layers, n);
+          const h2 = height(m, frame.index, f2, layers, n);
+          m.facesVertices.forEach((_, g) => {
+            if (g === f1 || g === f2) return;
+            const gn = normal(m, frame.index, g);
+            if (Math.abs(Math.abs(dot(gn, n)) - 1) > 1e-9) return;
+            const crossed = [0.1, 0.3, 0.5, 0.7, 0.9].some((t) =>
+              inside(
+                [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])],
+                g,
+                gn,
+              ),
+            );
+            if (!crossed) return;
+            const h = height(m, frame.index, g, layers, n);
+            expect(
+              h > Math.min(h1, h2) && h < Math.max(h1, h2),
+              `frame ${frame.index}: face ${g} inside the fold at edge ${e}`,
+            ).toBe(false);
+          });
+        });
+      }
+    },
+  );
+
+  it("puts every flap tip on the masu box's floor on top of the floor, inside the box", () => {
+    // Nothing folds a tip flat onto the floor: it comes down the inside of a wall and bends onto
+    // it. What says it is on top is the bend at the foot of the wall, which both layers of the
+    // wall turn round: the inner one has to stay inside on the floor too.
+    const m = model("masu-box");
+    const last = m.frames.length - 1;
+    const layers = faceLayers(m, last);
+    const up: Vec3 = [0, 0, 1];
+    const coords = m.frames[last]!.coords;
+    const onFloor = m.facesVertices
+      .map((vertices, f) => ({ vertices, f }))
+      .filter(({ vertices }) => vertices.every((v) => Math.abs(coords[3 * v + 2]!) < 1e-9))
+      .map(({ f }) => f);
+    const floor = onFloor.filter((f) => normal(m, last, f)[2] > 0);
+    const tips = onFloor.filter((f) => normal(m, last, f)[2] < 0);
+    expect(floor).toHaveLength(1);
+    expect(tips).toHaveLength(4);
+    for (const tip of tips) {
+      expect(height(m, last, tip, layers, up), `face ${tip}`).toBeGreaterThan(
+        height(m, last, floor[0]!, layers, up),
+      );
+    }
+  });
+
+  it("says when a stack had to be guessed", () => {
+    // The flat preliminary base with one crease's mountain and valley swapped. The shape is the
+    // same, since a fold at 180° looks the same either way, but no stacking of its layers obeys
+    // the creases: four folds meeting at a flat vertex cannot all be valleys but one.
+    const m = model("preliminary-base");
+    const flat = m.frames[3]!;
+    const edge = flat.foldAngles.findIndex((angle) => Math.abs(angle) > 179);
+    const swap = <T>(values: readonly T[], value: T) =>
+      values.map((v, e) => (e === edge ? value : v));
+    const contradictory: ResolvedModel = {
+      ...m,
+      frames: m.frames.map((frame) =>
+        frame !== flat
+          ? frame
+          : {
+              ...frame,
+              foldAngles: Float64Array.from(swap([...frame.foldAngles], -frame.foldAngles[edge]!)),
+              assignments: swap(frame.assignments, frame.assignments[edge] === "V" ? "M" : "V"),
+            },
+      ),
+    };
+    const report = { guessed: 0 };
+    faceLayers(contradictory, 3, report);
+    expect(report.guessed).toBeGreaterThan(0);
+  });
+
   it("tells overlapping faces apart when the model is folded flat in another plane", () => {
     // The airplane stood on its edge: its flat frames then have no width along y.
     const m = model("paper-airplane");

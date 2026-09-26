@@ -19,6 +19,7 @@ import {
   turnAbout,
   type FaceInfo,
   type Layers,
+  type Motion,
   type Vec2,
   type Vec3,
 } from "./folding-sequence";
@@ -973,6 +974,522 @@ function crane(): Fixture {
   };
 }
 
+/**
+ * The traditional kabuto, the samurai helmet folded for Children's Day, from a square of side 2
+ * standing on a corner: corners at (0, ±√2) and (±√2, 0). Every step is a plain fold of some of
+ * the layers, and most of them only the front ones, so it is a test of picking out layers. With
+ * a = √2, the finished helmet is a diamond from (0, 0) to (0, −a), horns out to either side.
+ */
+function samuraiHelmet(): Fixture {
+  const a = Math.SQRT2;
+  const all: Layers = () => true;
+  const tagged =
+    (name: string): Layers =>
+    ({ tags }) =>
+      tags.has(name);
+  // Layers by the half of the sheet they came from: the top half ends up in front after step 1.
+  const front: Layers = ({ cp, tags }) =>
+    cp[1] > 0 && !tags.has("left flap") && !tags.has("right flap");
+  const back: Layers = ({ cp, tags }) =>
+    cp[1] < 0 && !tags.has("left flap") && !tags.has("right flap");
+  // The horns turn out along a line from the middle of each flap's lower edge, a quarter-turn and
+  // a half from upright, so the points stick out beyond the sides.
+  const hornTurn = Math.PI / 8;
+  const hornEnd = a / 2 / (Math.cos(hornTurn) + Math.sin(hornTurn));
+  const hornLine = (sign: 1 | -1) =>
+    [
+      [0, -a / 2],
+      [sign * hornEnd * Math.sin(hornTurn), -a / 2 + hornEnd * Math.cos(hornTurn)],
+    ] as const;
+
+  const sequence = new FoldingSequence([
+    [0, -a],
+    [a, 0],
+    [0, a],
+    [-a, 0],
+  ])
+    .step({
+      title: "Fold in half into a triangle",
+      description: "Top corner down to the bottom corner.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [-a, 0],
+            [a, 0],
+          ],
+          side: [0, a / 2],
+          groups: [{ layers: all, angle: 180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the corners down to the bottom",
+      description: "Left and right corners meet at the bottom point, making a square.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [0, 0],
+            [-a / 2, -a / 2],
+          ],
+          side: [-a / 2, -0.2 * a],
+          groups: [{ layers: all, angle: 180, tag: "left flap" }],
+        },
+        {
+          kind: "fold",
+          line: [
+            [0, 0],
+            [a / 2, -a / 2],
+          ],
+          side: [a / 2, -0.2 * a],
+          groups: [{ layers: all, angle: 180, tag: "right flap" }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the points up to the top",
+      description: "The two flaps only; the bottom of the square stays.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [-a / 2, -a / 2],
+            [a / 2, -a / 2],
+          ],
+          side: [0, -0.8 * a],
+          groups: [
+            { layers: tagged("left flap"), angle: 180, tag: "left point" },
+            { layers: tagged("right flap"), angle: 180, tag: "right point" },
+          ],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the points out into horns",
+      description: "Only the layers just folded up turn out.",
+      operations: [
+        {
+          kind: "fold",
+          line: hornLine(-1),
+          side: [-0.01 * a, -0.1 * a],
+          groups: [{ layers: tagged("left point"), angle: 180 }],
+        },
+        {
+          kind: "fold",
+          line: hornLine(1),
+          side: [0.01 * a, -0.1 * a],
+          groups: [{ layers: tagged("right point"), angle: 180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the front point up",
+      description: "Front layer of the bottom triangle only, its point to the middle.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [-a / 2, (-3 * a) / 4],
+            [a / 2, (-3 * a) / 4],
+          ],
+          side: [0, -0.9 * a],
+          groups: [{ layers: front, angle: 180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold it up again to make the brim",
+      description: "Up over the base of the horns.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [-a / 2, -a / 2],
+            [a / 2, -a / 2],
+          ],
+          side: [0, -0.6 * a],
+          groups: [{ layers: front, angle: 180 }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the back point up behind",
+      description: "The helmet is done; open the bottom to wear it.",
+      operations: [
+        {
+          kind: "fold",
+          line: [
+            [-a / 2, -a / 2],
+            [a / 2, -a / 2],
+          ],
+          side: [0, -0.8 * a],
+          groups: [{ layers: back, angle: -180 }],
+        },
+      ],
+    });
+
+  return {
+    title: "Samurai helmet",
+    patternTitle: "Crease pattern",
+    patternDescription: "The traditional kabuto, from a square.",
+    ...sequence.build(),
+  };
+}
+
+/**
+ * The traditional masu box, from a square of side 2√2 standing on a corner: corners at (0, ±2)
+ * and (±2, 0). Folding the corners to the centre (a blintz) leaves the square [−1, 1]², and the
+ * box is the middle half of that: floor [−0.5, 0.5]², walls 0.5 high, every wall two layers.
+ *
+ * The first steps are plain folds that leave the creases. Then the sides stand up, and each end
+ * rises with its corners folding in: a corner square [0.5, 1]² splits along its diagonal into a
+ * half hinged on the end wall (A) and one hinged on the side wall (B), which fold flat against the
+ * inside of the end wall. The end's corner flap, unfolded, is folded back over the wall and into
+ * the box: the part over the wall lines it, its tip lies on the floor, and the ears either side
+ * fold back over the corners and lock them. Positions below are for the north end and its
+ * north-east corner; `sx` mirrors east to west, and the south end mirrors y.
+ */
+function masuBox(): Fixture {
+  const all: Layers = () => true;
+  const tagged =
+    (name: string): Layers =>
+    ({ tags }) =>
+      tags.has(name);
+  type Place = (x: number, y: number) => Vec3;
+  /** The motion that places the crease pattern as `place` says; `place` must be a rigid map. */
+  const motionOf = (place: Place): Motion =>
+    motionFromTriangle(
+      [
+        [0, 0],
+        [1, 0],
+        [0, 1],
+      ],
+      [place(0, 0), place(1, 0), place(0, 1)],
+    );
+
+  /** Where each part of the north end goes, by where it is in the crease pattern. */
+  const north =
+    (standing: boolean) =>
+    (x: number, y: number): Place => {
+      const sx = x < 0 ? -1 : 1;
+      const ax = Math.abs(x);
+      if (ax < 0.5 && y < 1) return (px, py) => [px, 0.5, py - 0.5]; // end wall
+      if (ax < 0.5) {
+        // The flap: standing, it carries the wall on up; folded in, it lines it and lies on the floor.
+        if (standing) return (px, py) => [px, 0.5, py - 0.5];
+        if (y < 1.5) return (px, py) => [px, 0.5, 1.5 - py];
+        return (px, py) => [px, 2 - py, 0];
+      }
+      if (y > 1) {
+        // The ear, beside the flap: with the corner's half A until the flap folds over.
+        if (standing) return (px, py) => [sx * (1 - sx * px), 0.5, py - 0.5];
+        return (px, py) => [sx * (1 - sx * px), 0.5, 1.5 - py];
+      }
+      if (ax < 1) {
+        if (y > ax) return (px, py) => [sx * (1 - sx * px), 0.5, py - 0.5]; // A
+        return (px, py) => [sx * (1 - py), 0.5, sx * px - 0.5]; // B
+      }
+      // The side's corner flap, folded onto B since the blintz.
+      return (px, py) => [sx * (1 - py), 0.5, 1.5 - sx * px];
+    };
+  const south =
+    (standing: boolean) =>
+    (x: number, y: number): Place => {
+      const place = north(standing)(x, -y);
+      return (px, py) => {
+        const [X, Y, Z] = place(px, -py);
+        return [X, -Y, Z];
+      };
+    };
+  const placeEnd =
+    (end: typeof north, standing: boolean) =>
+    ({ cp }: FaceInfo): Motion =>
+      motionOf(end(standing)(cp[0], cp[1]));
+
+  const fold = (
+    line: readonly [Vec2, Vec2],
+    side: Vec2,
+    layers: Layers,
+    angle: number,
+    tag?: string,
+  ) => ({
+    kind: "fold" as const,
+    line,
+    side,
+    groups: [{ layers, angle, tag }],
+  });
+
+  const sequence = new FoldingSequence([
+    [0, -2],
+    [2, 0],
+    [0, 2],
+    [-2, 0],
+  ])
+    .step({
+      title: "Fold the corners to the centre",
+      operations: [
+        fold(
+          [
+            [-1, 1],
+            [1, 1],
+          ],
+          [0, 1.5],
+          all,
+          180,
+          "north flap",
+        ),
+        fold(
+          [
+            [1, -1],
+            [1, 1],
+          ],
+          [1.5, 0],
+          all,
+          180,
+          "east flap",
+        ),
+        fold(
+          [
+            [-1, -1],
+            [1, -1],
+          ],
+          [0, -1.5],
+          all,
+          180,
+          "south flap",
+        ),
+        fold(
+          [
+            [-1, -1],
+            [-1, 1],
+          ],
+          [-1.5, 0],
+          all,
+          180,
+          "west flap",
+        ),
+      ],
+    })
+    .step({
+      title: "Fold the top and bottom edges to the centre",
+      operations: [
+        fold(
+          [
+            [-1, 0.5],
+            [1, 0.5],
+          ],
+          [0, 0.75],
+          all,
+          180,
+          "top edge",
+        ),
+        fold(
+          [
+            [-1, -0.5],
+            [1, -0.5],
+          ],
+          [0, -0.75],
+          all,
+          180,
+          "bottom edge",
+        ),
+      ],
+    })
+    .step({
+      title: "Unfold",
+      operations: [
+        fold(
+          [
+            [-1, 0.5],
+            [1, 0.5],
+          ],
+          [0, 0.25],
+          tagged("top edge"),
+          180,
+        ),
+        fold(
+          [
+            [-1, -0.5],
+            [1, -0.5],
+          ],
+          [0, -0.25],
+          tagged("bottom edge"),
+          180,
+        ),
+      ],
+    })
+    .step({
+      title: "Fold the sides to the centre",
+      operations: [
+        fold(
+          [
+            [0.5, -1],
+            [0.5, 1],
+          ],
+          [0.75, 0],
+          all,
+          180,
+          "right edge",
+        ),
+        fold(
+          [
+            [-0.5, -1],
+            [-0.5, 1],
+          ],
+          [-0.75, 0],
+          all,
+          180,
+          "left edge",
+        ),
+      ],
+    })
+    .step({
+      title: "Unfold",
+      operations: [
+        fold(
+          [
+            [0.5, -1],
+            [0.5, 1],
+          ],
+          [0.25, 0],
+          tagged("right edge"),
+          180,
+        ),
+        fold(
+          [
+            [-0.5, -1],
+            [-0.5, 1],
+          ],
+          [-0.25, 0],
+          tagged("left edge"),
+          180,
+        ),
+      ],
+    })
+    .step({
+      title: "Unfold the top and bottom corners",
+      description: "And crease the small corner squares along their diagonals.",
+      operations: [
+        fold(
+          [
+            [-1, 1],
+            [1, 1],
+          ],
+          [0, 0.5],
+          tagged("north flap"),
+          180,
+        ),
+        fold(
+          [
+            [-1, -1],
+            [1, -1],
+          ],
+          [0, -0.5],
+          tagged("south flap"),
+          180,
+        ),
+        // Only the corner squares of the sheet itself, which the flaps no longer cover.
+        ...[1, -1].flatMap((sx) =>
+          [1, -1].map((sy) => ({
+            kind: "crease" as const,
+            line: [
+              [0.5 * sx, 0.5 * sy],
+              [sx, sy],
+            ] as const,
+            layers: ({ cp }: FaceInfo) =>
+              cp[0] * sx > 0.5 && cp[0] * sx < 1 && cp[1] * sy > 0.5 && cp[1] * sy < 1,
+          })),
+        ),
+      ],
+    })
+    .step({
+      title: "Stand the sides up",
+      description: "Along the creases a quarter of the way in, the corners going up with them.",
+      operations: [
+        fold(
+          [
+            [0.5, -2],
+            [0.5, 2],
+          ],
+          [0.75, 0],
+          ({ world }) => world[0] > 0,
+          90,
+        ),
+        // Each side only: a fold's line runs on across the model, and the east side is standing.
+        fold(
+          [
+            [-0.5, -2],
+            [-0.5, 2],
+          ],
+          [-0.75, 0],
+          ({ world }) => world[0] < 0,
+          90,
+        ),
+      ],
+    })
+    .step({
+      inBetween: [
+        { at: 0.35, title: "Raise the top end", description: "The corners start to fold in." },
+        { at: 0.75, title: "Raise the top end: push the corners in" },
+      ],
+      driver: [0, 0.5],
+      title: "Raise the top end: corners flat against it",
+      description: "Each corner folds in half and lies against the inside of the end wall.",
+      operations: [
+        {
+          kind: "place",
+          groups: [{ layers: ({ cp }) => cp[1] > 0.5, set: placeEnd(north, true) }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the top flap over into the box",
+      description: "It lines the end wall, its point on the floor, its ears over the corners.",
+      operations: [
+        {
+          kind: "place",
+          groups: [{ layers: ({ cp }) => cp[1] > 1, set: placeEnd(north, false) }],
+        },
+      ],
+      // Over the top of the wall the flap folds onto the wall's inside, a valley; beside it the
+      // ears fold over the corner halves the other way.
+      signs: ([x, y]) => (Math.abs(y - 1) < 1e-9 ? (Math.abs(x) < 0.5 ? "V" : "M") : undefined),
+    })
+    .step({
+      inBetween: [
+        { at: 0.35, title: "Raise the bottom end" },
+        { at: 0.75, title: "Raise the bottom end: push the corners in" },
+      ],
+      driver: [0, -0.5],
+      title: "Raise the bottom end: corners flat against it",
+      operations: [
+        {
+          kind: "place",
+          groups: [{ layers: ({ cp }) => cp[1] < -0.5, set: placeEnd(south, true) }],
+        },
+      ],
+    })
+    .step({
+      title: "Fold the bottom flap over into the box",
+      description: "The box is done: every wall two layers thick, held by the flaps.",
+      operations: [
+        {
+          kind: "place",
+          groups: [{ layers: ({ cp }) => cp[1] < -1, set: placeEnd(south, false) }],
+        },
+      ],
+      signs: ([x, y]) => (Math.abs(y + 1) < 1e-9 ? (Math.abs(x) < 0.5 ? "V" : "M") : undefined),
+    });
+
+  return {
+    title: "Masu box",
+    patternTitle: "Crease pattern",
+    patternDescription: "The traditional masu, from a square.",
+    ...sequence.build(),
+  };
+}
+
 const FIXTURES: [string, () => Fixture][] = [
   ["accordion-pleat", () => withMeasuredAssignments(accordionPleat())],
   ["waterbomb-base", () => withMeasuredAssignments(waterbombBase())],
@@ -981,6 +1498,8 @@ const FIXTURES: [string, () => Fixture][] = [
   ["road-map", roadMap],
   ["paper-airplane", paperAirplane],
   ["crane", crane],
+  ["samurai-helmet", samuraiHelmet],
+  ["masu-box", masuBox],
 ];
 
 /**

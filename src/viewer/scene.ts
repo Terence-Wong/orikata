@@ -19,6 +19,7 @@ import {
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Assignment, ResolvedModel } from "@/fold";
 import type { ViewerController } from "./controller";
+import { Follow } from "./follow";
 import {
   buildRenderModel,
   CREASE_COLORS,
@@ -63,6 +64,8 @@ export class ViewerScene {
   private readonly scene = new Scene();
   private readonly camera: PerspectiveCamera;
   private readonly controls: OrbitControls;
+  /** Where the view turns about, carried along with the paper as it folds. */
+  private readonly pivot: Follow;
   private readonly meshGeometry = new BufferGeometry();
   private readonly render: RenderModel;
   private readonly meshPositions: Float32Array;
@@ -150,19 +153,23 @@ export class ViewerScene {
     liftDepth(lineMaterial);
     this.scene.add(new LineSegments(this.lineGeometry, lineMaterial));
 
+    // The distance fits every frame, so none leaves the view; the view turns about the middle of
+    // the frame being shown, which a folded model can leave far behind.
     const fit = fitCamera(model, FOV_DEGREES, 1);
+    const centre = controller.viewCentre();
+    this.pivot = new Follow(centre, fit.radius);
     // Depth precision is set mostly by the near plane; this one leaves enough to sort sheets a
     // thousandth of the model apart. Only zooming right in brings paper nearer than it.
     this.camera = new PerspectiveCamera(FOV_DEGREES, 1, fit.radius / 20, fit.radius * 30);
     this.camera.up.set(0, 0, 1);
     this.camera.position.set(
-      fit.center[0] + fit.distance * 0.45,
-      fit.center[1] - fit.distance * 0.75,
-      fit.center[2] + fit.distance * 0.49,
+      centre[0] + fit.distance * 0.45,
+      centre[1] - fit.distance * 0.75,
+      centre[2] + fit.distance * 0.49,
     );
 
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target = new Vector3(...fit.center);
+    this.controls.target = new Vector3(...centre);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
     this.controls.addEventListener("change", this.requestRender);
@@ -226,11 +233,27 @@ export class ViewerScene {
       this.copyLinePositions();
       this.needsRender = true;
     }
+    if (this.followPaper(dt)) this.needsRender = true;
     if (this.controls.enableDamping) this.controls.update();
     if (!this.needsRender) return;
     this.needsRender = false;
     this.renderer.render(this.scene, this.camera);
   };
+
+  /**
+   * Pans the view as the middle of the paper moves, so it always turns about the model. The camera
+   * and the point it orbits move together, which keeps the angle and zoom the viewer chose and any
+   * pan of their own. Returns true while the view is still moving.
+   */
+  private followPaper(dt: number): boolean {
+    const [x, y, z] = this.pivot.value;
+    if (!this.pivot.step(this.controller.viewCentre(), dt)) return false;
+    const [nx, ny, nz] = this.pivot.value;
+    const shift = new Vector3(nx - x, ny - y, nz - z);
+    this.camera.position.add(shift);
+    this.controls.target.add(shift);
+    return true;
+  }
 
   /** The stacking order to draw in: that of the frame the paper is nearer (see the controller). */
   private layers(): Int32Array {

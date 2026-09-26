@@ -33,6 +33,12 @@ const FLAT_TOLERANCE_DEGREES = 1e-3;
  */
 const OVERLAP_BUDGET = 4_000_000;
 
+/** What `faceLayers` could not settle by the folding rules alone. */
+export interface LayerReport {
+  /** Stacks of faces lying flat on each other that had to be ordered by the guess. */
+  guessed: number;
+}
+
 /**
  * The layer each face sits on in one frame, counted in sheets of paper along the face's own
  * normal. The renderer draws every face where it is but writes the depth it would have if lifted
@@ -48,7 +54,11 @@ const OVERLAP_BUDGET = 4_000_000;
  * the longest paths through those constraints, drawn back together by `compact`. Flaps that meet
  * only by overlapping, not at a crease, are then put in an order of their own (see below).
  */
-export function faceLayers(model: ResolvedModel, frameIndex: number): Int32Array {
+export function faceLayers(
+  model: ResolvedModel,
+  frameIndex: number,
+  report?: LayerReport,
+): Int32Array {
   const frame = model.frames[frameIndex]!;
   const faceCount = model.facesVertices.length;
 
@@ -126,6 +136,13 @@ export function faceLayers(model: ResolvedModel, frameIndex: number): Int32Array
   };
   const tacos: Taco[] = [];
   const seams = links.filter(({ joined }) => joined).map(({ edge }) => edge);
+  // Creases the paper turns a corner at, neither open nor folded flat.
+  const bends = links
+    .filter(
+      ({ joined, edge }) =>
+        !joined && Math.abs(frame.foldAngles[edge]!) < 180 - FLAT_TOLERANCE_DEGREES,
+    )
+    .map(({ edge }) => edge);
   links.forEach(({ f1, f2, stack, edge }) => {
     if (stack === 0) return;
     const [lower, upper] = stack * facing[f1]! > 0 ? [f1, f2] : [f2, f1];
@@ -144,10 +161,12 @@ export function faceLayers(model: ResolvedModel, frameIndex: number): Int32Array
     planes,
     tacos,
     seams,
+    bends,
     facing,
     group,
     above,
     order,
+    report,
   });
 
   // Anything the rules could not settle — a stack too big to search, or a file whose folds
@@ -252,10 +271,13 @@ interface FlatStacks {
   tacos: readonly Taco[];
   /** Creases the paper continues flat across: inside a group, not between groups. */
   seams: readonly number[];
+  /** Creases the paper turns a corner at, neither open nor folded flat. */
+  bends: readonly number[];
   facing: Int8Array;
   group: (face: number) => number;
   above: ReadonlyArray<readonly [from: number, to: number]>;
   order: (lower: number, upper: number) => void;
+  report?: LayerReport;
 }
 
 /**
@@ -270,10 +292,12 @@ function orderFlatStacks({
   planes,
   tacos,
   seams,
+  bends,
   facing,
   group,
   above,
   order,
+  report,
 }: FlatStacks): void {
   const faceCount = model.facesVertices.length;
   const parent = Int32Array.from({ length: faceCount }, (_, f) => f);
@@ -287,6 +311,11 @@ function orderFlatStacks({
   // Stacks are joined through groups, not faces: a group spans several faces, and every order
   // involving it has to be settled together.
   for (const [a, b] of overlaps) parent[root(group(a))] = root(group(b));
+  // Stacks in two planes that the paper bends between, round one corner, are settled together.
+  const corners = nestedBends(model, coords, overlaps, planes, bends, facing).filter(
+    ({ p1, p2, q1, q2 }) => group(p1) !== group(p2) && group(q1) !== group(q2),
+  );
+  for (const { p1, q1 } of corners) parent[root(group(p1))] = root(group(q1));
 
   const sets = new Map<
     number,
@@ -318,7 +347,11 @@ function orderFlatStacks({
   };
 
   for (const set of sets.values()) {
-    if (!set.ok || set.pairs.length === 0 || set.pairs.length > MAX_STACK_PAIRS) continue;
+    if (set.pairs.length === 0) continue;
+    if (!set.ok || set.pairs.length > MAX_STACK_PAIRS) {
+      if (report) report.guessed++;
+      continue;
+    }
     const inSet = tacos.filter((taco) => set.faces.has(taco.lower) && set.faces.has(taco.upper));
     const flat = new Map<Taco, FlatTaco>(
       inSet.map((taco) => [taco, { lower: group(taco.lower), upper: group(taco.upper) }]),
@@ -351,10 +384,20 @@ function orderFlatStacks({
         ([a, b]) => [flat.get(a)!, flat.get(b)!] as const,
       ),
       tacoTortilla,
+      linked: corners
+        .filter(({ p1 }) => set.faces.has(p1))
+        .map(({ p1, p2, q1, q2, same }) =>
+          same
+            ? ([group(p1), group(p2), group(q1), group(q2)] as const)
+            : ([group(p1), group(p2), group(q2), group(q1)] as const),
+        ),
       prefer: (a, b) => middle[a]! < middle[b]! || (middle[a] === middle[b] && a < b),
       budget: SEARCH_BUDGET,
     });
-    if (!solved) continue;
+    if (!solved) {
+      if (report) report.guessed++;
+      continue;
+    }
     for (const [lower, upper] of solved) order(lower, upper);
   }
 }
@@ -380,9 +423,11 @@ function crossesInside(from: Vec, to: Vec, plane: Plane, tolerance: number): boo
   for (const axis of axes) {
     const [aMin, aMax] = project(plane.points, axis);
     const [bMin, bMax] = project(segment, axis);
-    if (Math.min(aMax, bMax) - Math.max(aMin, bMin) <= tolerance * Math.hypot(...axis)) {
-      return false;
-    }
+    // The segment has to reach into the face's open interval. Measuring the overlap's length
+    // instead would miss every segment with no width along the axis: across itself, and along
+    // any side of the face it runs parallel to.
+    const margin = tolerance * Math.hypot(...axis);
+    if (bMax <= aMin + margin || bMin >= aMax - margin) return false;
   }
   return true;
 }
@@ -579,6 +624,71 @@ interface Taco {
   edge: number;
   lower: number;
   upper: number;
+}
+
+/**
+ * Where the paper turns the same corner twice, like both layers of a box's wall bending onto its
+ * floor: two bends along one line, the faces on one side of them overlapping in one plane (p1 and
+ * p2) and those on the other side in another (q1 and q2). The bends cannot cross, so whichever is
+ * inside on one side of the corner is inside on the other: p2 is nearer the q side than p1 exactly
+ * when q2 is nearer the p side than q1. `same` says whether that makes "p2 above p1" and "q2 above
+ * q1", in each stack's own direction of height, true together or opposite.
+ */
+function nestedBends(
+  model: ResolvedModel,
+  coords: Float64Array,
+  overlaps: ReadonlyArray<readonly [number, number, 1 | -1]>,
+  planes: ReadonlyArray<Plane | undefined>,
+  bends: readonly number[],
+  facing: Int8Array,
+): Array<{ p1: number; p2: number; q1: number; q2: number; same: boolean }> {
+  const overlapping = new Set<string>();
+  const stacked = new Set<number>();
+  for (const [a, b] of overlaps) {
+    overlapping.add(`${a},${b}`).add(`${b},${a}`);
+    stacked.add(a).add(b);
+  }
+  const overlap = (a: number, b: number) => overlapping.has(`${a},${b}`);
+  const point = (v: number): Vec => [coords[3 * v]!, coords[3 * v + 1]!, coords[3 * v + 2]!];
+  const centroid = (f: number): Vec => {
+    const face = model.facesVertices[f]!;
+    const sum = [0, 0, 0];
+    for (const v of face) for (let k = 0; k < 3; k++) sum[k]! += coords[3 * v + k]!;
+    return [sum[0]! / face.length, sum[1]! / face.length, sum[2]! / face.length];
+  };
+  // Only bends with a face in some stack can take part.
+  const candidates = bends.filter((edge) =>
+    model.edgesFaces[edge]!.every((face) => stacked.has(face)),
+  );
+  const tolerance = 1e-7 * modelExtent(planes);
+  /** +1 if the stack's height rises towards where `other` lies from face `f`'s plane. */
+  const towards = (f: number, other: number, on: Vec): number =>
+    facing[f]! * Math.sign(dot(sub(centroid(other), on), planes[f]!.normal));
+
+  const found: Array<{ p1: number; p2: number; q1: number; q2: number; same: boolean }> = [];
+  let budget = OVERLAP_BUDGET;
+  for (let i = 0; i < candidates.length; i++) {
+    const e1 = candidates[i]!;
+    const [u1, v1] = model.edgesVertices[e1]!;
+    const [a1, b1] = model.edgesFaces[e1]! as [number, number];
+    for (let j = i + 1; j < candidates.length; j++) {
+      if (--budget < 0) return found;
+      const e2 = candidates[j]!;
+      const [u2, v2] = model.edgesVertices[e2]!;
+      if (!sharesLength(point(u1), point(v1), point(u2), point(v2), tolerance)) continue;
+      const [a2, b2] = model.edgesFaces[e2]! as [number, number];
+      let pair: [number, number, number, number] | undefined;
+      if (overlap(a1, a2) && overlap(b1, b2)) pair = [a1, a2, b1, b2];
+      else if (overlap(a1, b2) && overlap(b1, a2)) pair = [a1, b2, b1, a2];
+      if (!pair) continue;
+      const [p1, p2, q1, q2] = pair;
+      if (!planes[p1] || !planes[q1]) continue;
+      const on = point(u1);
+      const same = towards(p1, q1, on) === towards(q1, p1, on);
+      found.push({ p1, p2, q1, q2, same });
+    }
+  }
+  return found;
 }
 
 /**

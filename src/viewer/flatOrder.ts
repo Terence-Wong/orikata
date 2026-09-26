@@ -30,6 +30,11 @@ export interface FlatOrderProblem {
   tacoTaco: ReadonlyArray<readonly [FlatTaco, FlatTaco]>;
   /** A group crossed by a fold's line, and the fold. */
   tacoTortilla: ReadonlyArray<readonly [number, FlatTaco]>;
+  /**
+   * Orders that must go the same way round, [a, b, c, d]: b is above a exactly when d is above c.
+   * For stacks in different planes that the paper bends between (see `layers.ts`).
+   */
+  linked: ReadonlyArray<readonly [number, number, number, number]>;
   /** Which way to try first when the rules leave a choice: true if `a` should go below `b`. */
   prefer(a: number, b: number): boolean;
   /** How many guesses the search may make before giving up. */
@@ -103,6 +108,8 @@ export function solveFlatOrder(
     if (c === taco.lower || c === taco.upper) continue;
     equal(c, taco.lower, c, taco.upper);
   }
+
+  for (const [a, b, c, d] of problem.linked) equal(a, b, c, d);
 
   // Taco–taco: r is strictly inside [p, q] exactly when t is, and the same the other way round.
   const inside = (x: number, p: number, q: number): boolean | undefined => {

@@ -9,6 +9,10 @@
  * one reached continuously from the start: a petal fold's flaps swing in the way paper goes, not
  * the other way round.
  *
+ * A crease the step leaves at the same angle at both ends is held at that angle throughout. Paper
+ * does that, and without it a flap hinged on a moving face, such as the tip of a flap that only
+ * rides along, would be free to swing anywhere the solve happened to leave it.
+ *
  * It fails loudly rather than approximately: if no rigid state exists part-way (the step needs the
  * paper to bend), or the path does not arrive at the end state given (the end was specified
  * wrongly, or the motion went down another branch), it throws.
@@ -67,6 +71,7 @@ export function rigidInBetweens(problem: InBetweenProblem): Vec[][] {
   }
 
   const size = Math.max(...flat.map((p) => Math.hypot(p[0], p[1])));
+  const held = heldCreases(faces, fixed, start, end);
   const angleAt = (positions: ReadonlyArray<Point>) =>
     openingAngle(normal(faces[driver[0]]!, positions), normal(faces[driver[1]]!, positions));
   const angleStart = angleAt(start);
@@ -106,7 +111,7 @@ export function rigidInBetweens(problem: InBetweenProblem): Vec[][] {
       });
     }
     const target = angleStart + s * (angleEnd - angleStart);
-    const solved = solve(guess, unknown, count, pairs, faces, driver, target, size);
+    const solved = solve(guess, unknown, count, pairs, held, faces, driver, target, size);
     if (!solved) {
       throw new Error(
         `${problem.where}: no rigid state ${(s * 100).toFixed(1)}% of the way; the step needs the paper to bend`,
@@ -135,12 +140,86 @@ export function rigidInBetweens(problem: InBetweenProblem): Vec[][] {
   return fractions.map((s) => results.get(s)!);
 }
 
+/** A crease between two faces, `a` to `b` as face `f1` runs, kept at a signed angle. */
+interface Held {
+  f1: number;
+  f2: number;
+  a: number;
+  b: number;
+  angle: number;
+}
+
+/** Creases the step leaves at the same signed angle, with at least one side moving. */
+function heldCreases(
+  faces: ReadonlyArray<readonly number[]>,
+  fixed: Uint8Array,
+  start: ReadonlyArray<Point>,
+  end: ReadonlyArray<Point>,
+): Held[] {
+  const sides = new Map<string, Array<{ face: number; a: number; b: number }>>();
+  faces.forEach((face, f) => {
+    face.forEach((a, i) => {
+      const b = face[(i + 1) % face.length]!;
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      if (!sides.has(key)) sides.set(key, []);
+      sides.get(key)!.push({ face: f, a, b });
+    });
+  });
+  const held: Held[] = [];
+  for (const pair of sides.values()) {
+    if (pair.length !== 2) continue;
+    const [{ face: f1, a, b }, { face: f2 }] = pair as [
+      { face: number; a: number; b: number },
+      { face: number },
+    ];
+    if ([...faces[f1]!, ...faces[f2]!].every((v) => fixed[v])) continue;
+    const before = signedAngle(faces[f1]!, faces[f2]!, a, b, start);
+    const after = signedAngle(faces[f1]!, faces[f2]!, a, b, end);
+    if (Math.abs(before - after) < 1e-9) held.push({ f1, f2, a, b, angle: before });
+  }
+  return held;
+}
+
+/** How far the crease a→b between two faces is folded, signed about the direction a→b. */
+function signedAngle(
+  f1: readonly number[],
+  f2: readonly number[],
+  a: number,
+  b: number,
+  at: ReadonlyArray<Point>,
+): number {
+  const n1 = normal(f1, at);
+  const n2 = normal(f2, at);
+  const e = unit(sub(at[b]!, at[a]!));
+  return Math.atan2(dot(cross(n1, n2), e), dot(n1, n2));
+}
+
+/** How far face f2's normal is from where the held angle puts it: zero when the crease holds. */
+function heldResidual(
+  held: Held,
+  faces: ReadonlyArray<readonly number[]>,
+  at: ReadonlyArray<Point>,
+): Vec {
+  const n1 = normal(faces[held.f1]!, at);
+  const n2 = normal(faces[held.f2]!, at);
+  const e = unit(sub(at[held.b]!, at[held.a]!));
+  const turned = cross(e, n1);
+  const c = Math.cos(held.angle);
+  const s = Math.sin(held.angle);
+  return [
+    n2[0] - c * n1[0] - s * turned[0],
+    n2[1] - c * n1[1] - s * turned[1],
+    n2[2] - c * n1[2] - s * turned[2],
+  ];
+}
+
 /** Levenberg–Marquardt on the rigidity and driver residuals. Null if it does not converge. */
 function solve(
   guess: Vec[],
   unknown: Int32Array,
   count: number,
   pairs: ReadonlyArray<readonly [number, number, number]>,
+  held: readonly Held[],
   faces: ReadonlyArray<readonly number[]>,
   driver: readonly [number, number],
   target: number,
@@ -154,6 +233,7 @@ function solve(
 
   const residuals = (at: Vec[]): number[] => {
     const r = pairs.map(([a, b, rest]) => distance(at[a]!, at[b]!) - rest);
+    for (const crease of held) r.push(...heldResidual(crease, faces, at).map((x) => size * x));
     const angle = openingAngle(normal(faces[driver[0]]!, at), normal(faces[driver[1]]!, at));
     r.push(size * (angle - target));
     return r;
@@ -178,8 +258,29 @@ function solve(
       }
       return row;
     });
-    const driverRow: Array<[number, number]> = [];
     const h = 1e-7 * size;
+    // Held creases: finite differences over the points of their two faces.
+    for (const crease of held) {
+      const points = [...new Set([...faces[crease.f1]!, ...faces[crease.f2]!])].filter(
+        (v) => unknown[v]! >= 0,
+      );
+      const heldRows: Array<Array<[number, number]>> = [[], [], []];
+      for (const v of points) {
+        for (let k = 0; k < 3; k++) {
+          const saved = positions[v]![k]!;
+          positions[v]![k] = saved + h;
+          const up = heldResidual(crease, faces, positions);
+          positions[v]![k] = saved - h;
+          const down = heldResidual(crease, faces, positions);
+          positions[v]![k] = saved;
+          for (let c = 0; c < 3; c++) {
+            heldRows[c]!.push([3 * unknown[v]! + k, (size * (up[c]! - down[c]!)) / (2 * h)]);
+          }
+        }
+      }
+      rows.push(...heldRows);
+    }
+    const driverRow: Array<[number, number]> = [];
     for (const v of driverPoints) {
       for (let k = 0; k < 3; k++) {
         const saved = positions[v]![k]!;
@@ -298,6 +399,23 @@ function openingAngle(n1: Vec, n2: Vec): number {
     n1[0] * n2[1] - n1[1] * n2[0],
   );
   return Math.atan2(cross, dot);
+}
+
+function sub(a: Point, b: Point): Vec {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function dot(a: Point, b: Point): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross(a: Point, b: Point): Vec {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function unit(a: Point): Vec {
+  const length = Math.hypot(a[0], a[1], a[2]) || 1;
+  return [a[0] / length, a[1] / length, a[2] / length];
 }
 
 function distance(a: Point, b: Point): number {

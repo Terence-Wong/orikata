@@ -362,7 +362,16 @@ Test-visible state on the viewer root: `data-loaded`, `data-frame-index`, `data-
   crease's M/V plus the taco–taco, taco–tortilla and transitivity rules (`flatOrder.ts`), and the
   shader lifts only depth by layer, so nothing moves on screen and no gaps open at creases. The
   order is a best guess where the rules leave a choice, and stacks too large to search fall back
-  to a heuristic; `faceOrders` is still not read.
+  to a heuristic; `faceOrders` is still not read. Where the paper bends round one corner more than
+  once, like both layers of a box's wall turning onto its floor, the two stacks either side are
+  solved together and the inner bend is kept inside on both (added 2026-09-25 for the masu box,
+  whose flap tips on the floor are otherwise free to go under it). Every fixture is tested to need
+  no guess for any flat stack (`faceLayers`' report).
+- The view orbits about the middle of the frame being shown, not of the whole sequence
+  (2026-09-25): a model can fold far from the middle of the sheet it started as, and the road map
+  ends in a corner of it. The pivot follows the step as it plays or is scrubbed, eased by a
+  critically damped spring (`src/viewer/follow.ts`), and pans the camera with it, keeping the
+  viewer's angle, zoom and any pan of their own.
 
 ## 10. Risks and unknowns
 

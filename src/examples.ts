@@ -56,6 +56,18 @@ export const EXAMPLES: readonly Example[] = [
     blurb: "The traditional orizuru: preliminary base, petal folds, reverse folds, wings spread.",
   },
   {
+    name: "samurai-helmet",
+    title: "Samurai helmet",
+    blurb:
+      "The kabuto folded for Children's Day: horns and a brim, most folds through only the front layers.",
+  },
+  {
+    name: "masu-box",
+    title: "Masu box",
+    blurb:
+      "A real box from one square: the ends rise with their corners folding in, then lock over the walls.",
+  },
+  {
     name: "miura-map",
     title: "Miura map fold",
     blurb: "The fold used for maps and solar panels: eighty panels close into one flat stack.",

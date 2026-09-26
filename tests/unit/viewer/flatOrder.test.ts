@@ -16,6 +16,7 @@ function problem(parts: Partial<FlatOrderProblem> & { count: number }): FlatOrde
     tacos: [],
     tacoTaco: [],
     tacoTortilla: [],
+    linked: [],
     prefer: (a, b) => a < b,
     budget: 10_000,
     ...parts,
@@ -84,6 +85,26 @@ describe("solveFlatOrder", () => {
       }),
     )!;
     expect(pairs).toContainEqual([0, 2]);
+  });
+
+  it("keeps orders it is told are linked the same way round", () => {
+    // Two stacks, 0–1 and 2–3, in different planes, joined where the paper bends round one corner:
+    // the inner bend has to be inside on both sides of it. The taco fixes 3 above 2, and the link
+    // carries that over to 1 above 0, which the preference alone would not choose.
+    const pairs = solveFlatOrder(
+      problem({
+        count: 4,
+        overlaps: [
+          [0, 1],
+          [2, 3],
+        ],
+        tacos: [{ lower: 2, upper: 3 }],
+        linked: [[0, 1, 2, 3]],
+        prefer: (a, b) => a > b,
+      }),
+    )!;
+    expect(pairs).toContainEqual([0, 1]);
+    expect(pairs).toContainEqual([2, 3]);
   });
 
   it("reports rules that cannot all hold", () => {

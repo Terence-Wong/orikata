@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FoldAnimator, TransitionState } from "@/animation/types";
 import { loadFold, type ResolvedModel } from "@/fold";
 import { ViewerController } from "@/viewer/controller";
+import { fitCamera } from "@/viewer/renderModel";
 import { readFixture } from "../../helpers/fixtures";
 
-function model(name: "book-fold" | "book-fold-90" | "preliminary-base"): ResolvedModel {
+function model(
+  name: "book-fold" | "book-fold-90" | "preliminary-base" | "road-map",
+): ResolvedModel {
   const result = loadFold(readFixture("valid", name));
   if (!result.ok) throw new Error("fixture should load");
   return result.model;
@@ -266,5 +269,55 @@ describe("ViewerController", () => {
     expect(controller4.getState().frameCount).toBe(4);
     controller4.goTo(3);
     expect(controller4.getState().activeEdges).toEqual([8, 9, 10, 11]);
+  });
+
+  describe("the point the view turns about", () => {
+    /** The middle of the box around a frame's vertices. */
+    function boxCentre(coords: ArrayLike<number>): number[] {
+      const low = [Infinity, Infinity, Infinity];
+      const high = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < coords.length; i++) {
+        low[i % 3] = Math.min(low[i % 3]!, coords[i]!);
+        high[i % 3] = Math.max(high[i % 3]!, coords[i]!);
+      }
+      return low.map((l, k) => (l + high[k]!) / 2);
+    }
+
+    function expectNear(actual: readonly number[], expected: readonly number[]) {
+      expected.forEach((value, k) => expect(actual[k]).toBeCloseTo(value, 9));
+    }
+
+    it("is the middle of the frame being shown", () => {
+      const m = model("book-fold-90");
+      expectNear(controller.viewCentre(), boxCentre(m.frames[0]!.coords));
+      // Straight away when a step starts: the scene eases the view there as the step plays.
+      controller.goTo(2);
+      expectNear(controller.viewCentre(), boxCentre(m.frames[2]!.coords));
+    });
+
+    it("moves part way between the two frames as a step is scrubbed", () => {
+      const m = model("book-fold-90");
+      controller.goTo(2);
+      controller.scrubStep(0.25);
+      const from = boxCentre(m.frames[1]!.coords);
+      const to = boxCentre(m.frames[2]!.coords);
+      expectNear(
+        controller.viewCentre(),
+        from.map((f, k) => f + 0.25 * (to[k]! - f)),
+      );
+    });
+
+    it("follows a folded model away from the middle of the sheet it started as", () => {
+      // A road map folds down into one corner of its sheet; turning the view about the sheet's
+      // middle swung the folded map round off to one side.
+      const m = model("road-map");
+      const map = new ViewerController(m, new FakeAnimator());
+      map.goTo(m.frames.length - 1);
+      const sheet = fitCamera(m, 45, 1);
+      const [x, y, z] = map.viewCentre();
+      const offset = Math.hypot(x - sheet.center[0], y - sheet.center[1], z - sheet.center[2]);
+      expect(offset).toBeGreaterThan(sheet.radius * 0.5);
+      expectNear(map.viewCentre(), boxCentre(m.frames.at(-1)!.coords));
+    });
   });
 });
